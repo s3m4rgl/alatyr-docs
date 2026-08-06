@@ -1,0 +1,108 @@
+/* Просмотр схем в модальном окне */
+
+.dz-zoomable {
+  cursor: zoom-in;
+  position: relative;
+}
+
+.dz-zoomable:hover {
+  outline: 2px solid var(--md-accent-fg-color, #526cfe);
+  outline-offset: 4px;
+  border-radius: 4px;
+}
+
+.dz-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: none;
+  background: rgba(15, 23, 42, 0.82);
+  backdrop-filter: blur(2px);
+}
+
+.dz-overlay.dz-open {
+  display: block;
+}
+
+body.dz-lock {
+  overflow: hidden;
+}
+
+.dz-stage {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  cursor: grab;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  touch-action: none;
+}
+
+.dz-stage.dz-grabbing {
+  cursor: grabbing;
+}
+
+.dz-canvas {
+  transform-origin: 0 0;
+  will-change: transform;
+  background: #fff;
+  padding: 1.25rem;
+  border-radius: 6px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+}
+
+.dz-canvas svg {
+  display: block;
+}
+
+.dz-toolbar {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  z-index: 2;
+  display: flex;
+  gap: 0.4rem;
+}
+
+.dz-btn {
+  min-width: 2.6rem;
+  height: 2.6rem;
+  padding: 0 0.6rem;
+  border: 0;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #111827;
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.dz-btn:hover {
+  background: #fff;
+}
+
+.dz-close {
+  font-size: 1.4rem;
+}
+
+.dz-hint {
+  position: absolute;
+  bottom: 1rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2;
+  padding: 0.4rem 0.9rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.9);
+  color: #111827;
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+
+@media screen and (max-width: 600px) {
+  .dz-hint {
+    display: none;
+  }
+}

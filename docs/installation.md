@@ -4,15 +4,32 @@ Alatyr состоит из двух независимо устанавлива�
 
 - **Сервер** — Go API + PostgreSQL + PKI-бэкенд (Vault и/или внешний SCEP CA)
   + React Admin UI. Разворачивается один раз на инфраструктуре организации.
-- **Агент** — бинарь под macOS/Windows/Linux, ставится на каждое устройство
-  сотрудника отдельно и сам обращается к серверу за сертификатом.
+- **Агент** — исполняемый файл для macOS/Windows/Linux, ставится на каждое
+  устройство сотрудника отдельно и сам обращается к серверу за сертификатом.
 
 Эта страница покрывает установку обеих частей. Полный список переменных
 окружения сервера — на странице [Конфигурация](configuration.md). Прежде чем
 разворачивать сервер в продакшене, прочитайте
-[Отказоустойчивость (HA)](ha.md) и [Resource Sizing](sizing.md) — ни один из
+[Отказоустойчивость (HA)](ha.md) и [Расчёт ресурсов](sizing.md) — ни один из
 манифестов ниже не разворачивает БД или Vault в отказоустойчивой конфигурации
 из коробки.
+
+## Что нужно перед началом
+
+| Компонент | Обязательность | Назначение |
+|---|---|---|
+| PostgreSQL | обязательно | основная БД сервера |
+| Vault (или внешний SCEP CA) | обязательно | PKI-бэкенд, выпуск сертификатов |
+| Keycloak | опционально | SSO для Admin UI; альтернатива — встроенная локальная email+password аутентификация |
+
+Порты, встречающиеся на этой странице:
+
+| Порт | Что на нём слушает |
+|---|---|
+| `8090` | API сервера (`docker-compose.yml`) |
+| `13000` / `18090` | turnkey-демо (`docker-compose.demo.yml`): UI / API |
+| `8200` | Vault |
+| `8080` | Keycloak (dev-стек `docker-compose.dev.yml`) |
 
 ## Сервер
 
@@ -26,7 +43,7 @@ Kubernetes. Оба варианта описаны ниже.
 |---|---|
 | `docker-compose.yml` | «Production-shaped» стек: PostgreSQL + сервер + UI. Ожидает уже настроенный внешний Vault (и, опционально, Keycloak) — сам их не поднимает. |
 | `docker-compose.demo.yml` | Turnkey-демо: одна команда, ничего настраивать не нужно. Поднимает PostgreSQL, Vault (dev-режим), сервер, UI и наполняет БД тестовыми данными. |
-| `docker-compose.dev.yml` | Только dev-инфраструктура (PostgreSQL + Vault dev + Keycloak) — сервер и фронтенд предполагается гонять локально, либо в Docker через `--profile app`. |
+| `docker-compose.dev.yml` | Только dev-инфраструктура (PostgreSQL + Vault dev + Keycloak) — сервер и фронтенд предполагается запускать локально, либо в Docker через `--profile app`. |
 
 #### `docker-compose.yml` — самостоятельный хостинг
 
@@ -59,9 +76,9 @@ docker compose -f docker-compose.yml up --build -d
     Dockerfile сервера и Dockerfile фронтенда (используются этим файлом по
     умолчанию) параметризованы через build-args (`GOLANG_BASE`,
     `ALPINE_BASE` и т.п.) под внутренний registry-mirror конкретного
-    окружения сборки. Если у вас нет аналогичного mirror'а, соберите с
+    окружения сборки. Если у вас нет аналогичного зеркала, соберите с
     override на публичные образы (`--build-arg GOLANG_BASE=golang:1.25.8-alpine
-    --build-arg ALPINE_BASE=alpine:3.21.6` для сервера) — либо, для
+    --build-arg ALPINE_BASE=alpine:3.21.6` для сервера). Либо, для
     быстрого локального теста без правки build-args, ориентируйтесь на
     `Dockerfile.demo`/`docker-compose.demo.yml` ниже: он использует ровно те
     же публичные `docker.io`-образы и специально существует для сборки без
@@ -72,7 +89,7 @@ docker compose -f docker-compose.yml up --build -d
 Одна команда — и ничего настраивать не нужно. Собирается на публичных
 `docker.io`-образах (`Dockerfile.demo`), поднимает Vault в dev-режиме и
 конфигурирует его PKI-движок автоматически (`vault-init`), включает
-локальную аутентификацию и вебхуки, засеивает тестовые данные:
+локальную аутентификацию и вебхуки, наполняет базу тестовыми данными:
 
 ```bash
 docker compose -f docker-compose.demo.yml up --build
@@ -81,7 +98,7 @@ docker compose -f docker-compose.demo.yml up --build
 Затем откройте `http://localhost:13000` и войдите как `admin@wifi.local` /
 `Admin1234!`. API — `http://localhost:18090`.
 
-!!! danger "Только для демо/локального теста"
+!!! warning "Только для демо/локального теста"
 
     Секреты (`ALATYR_LOCAL_JWT_SECRET`, `ALATYR_WEBHOOK_ENC_KEY`,
     Vault dev-root-token, пароль администратора) захардкожены в самом файле
@@ -101,20 +118,20 @@ docker compose -f docker-compose.demo.yml up --build
 
 !!! warning "Это демонстрационный/референсный чарт, не подготовленный к продакшену"
 
-    Как и `docker-compose.demo.yml`, этот чарт по умолчанию гоняет Vault в
-    dev-режиме (`hashicorp/vault:1.17`, `vault server -dev` — in-memory,
+    Как и `docker-compose.demo.yml`, этот чарт по умолчанию запускает Vault
+    в dev-режиме (`hashicorp/vault:1.17`, `vault server -dev` — in-memory,
     без persistent storage backend, без auto/manual unseal), одну реплику
-    PostgreSQL без backup-джобы и без реплики, и держит демо-секреты прямо
-    в `values.yaml` открытым текстом. Он также по умолчанию включает
-    `demoReseed` — CronJob, который **каждые 4 часа полностью truncate'ит
-    все таблицы приложения и засеивает их заново тестовыми данными**
-    (`reseed/truncate.sql` + `reseed/seed-dev-data.sql`, по расписанию
-    `demoReseed.schedule`). Используйте этот чарт как отправную точку/шаблон
-    для собственного production-чарта, а не как есть — как минимум,
-    переопределите все значения под `secrets:` и поставьте
-    `demoReseed.enabled: false`, иначе периодическая джоба уничтожит любые
-    реальные данные. См. также [Отказоустойчивость](ha.md) и
-    [Resource Sizing](sizing.md) — там подробно, что именно в текущей
+    PostgreSQL без задачи резервного копирования и без реплики, и держит
+    демо-секреты прямо в `values.yaml` открытым текстом. Он также по
+    умолчанию включает `demoReseed` — CronJob, который **каждые 4 часа
+    полностью очищает все таблицы приложения и заново наполняет их
+    тестовыми данными** (`reseed/truncate.sql` + `reseed/seed-dev-data.sql`,
+    по расписанию `demoReseed.schedule`). Используйте этот чарт как
+    отправную точку/шаблон для собственного production-чарта, а не как
+    есть — как минимум, переопределите все значения под `secrets:` и
+    поставьте `demoReseed.enabled: false`, иначе периодическая задача
+    уничтожит любые реальные данные. См. также [Отказоустойчивость](ha.md) и
+    [Расчёт ресурсов](sizing.md) — там подробно, что именно в текущей
     топологии не готово к продакшен-нагрузке нескольких реплик.
 
 Что разворачивает чарт:
@@ -131,7 +148,7 @@ docker compose -f docker-compose.demo.yml up --build
 
 Ключевые значения `values.yaml`: `namespace`, `image.server`/`image.frontend`
 (образы `<ваш-registry>/alatyr-server`/`<ваш-registry>/alatyr-frontend` —
-соберите и запушьте их в свой registry перед деплоем)
+соберите и загрузите их в свой registry перед деплоем)
 + `image.tag`, `postgres.*`, `vault.pkiMount`/`vault.pkiRole`/`vault.certTTLHours`,
 `server.env.logLevel`/`server.env.corsOrigins`, `ingress.*`, `demoReseed.*`,
 `secrets.*`.
@@ -160,9 +177,17 @@ CSR на сервер (`/enroll`), ждёт одобрения админист�
 устанавливает выданный сертификат + Wi-Fi/802.1X-профиль локально.
 Собственной привязки к учётной записи сервера агент не требует — он
 аутентифицируется `enrollment_token` устройства, полученным при первом
-enroll.
+enroll. Флаги команды `alatyr-agent run` (`--server`, `--ca-cert`,
+`--poll-interval` и т.д.) одинаковы на всех трёх платформах — таблица
+приведена в разделе [Linux](#linux) ниже, отличаются только пути
+по умолчанию для конфига и state-файла.
 
 ### Linux
+
+Устанавливает исполняемый файл `/usr/local/bin/alatyr-agent` (или через
+deb/rpm), systemd-юниты `alatyr-agent.timer`/`alatyr-agent.service`,
+`alatyr-agent-secretd.service`, per-user `alatyr-agent-user.service` и
+конфигурационный файл `/etc/alatyr-agent/config.env`.
 
 Статически слинкованный бинарь (кроме опционального модуля `tpm2-pkcs11`),
 поддерживает `amd64`/`arm64`. Два способа установки:
@@ -176,8 +201,9 @@ sudo dnf install ./alatyr-agent-<version>-1.x86_64.rpm # Fedora/RHEL
 ```
 
 deb/rpm не принимают install-time флаги — параметры задаются после установки
-через `/etc/alatyr-agent/config.env` (0600, `KEY=VALUE`), до первого тика
-таймера (запускается сразу после установки, далее каждые 10 минут):
+через `/etc/alatyr-agent/config.env` (0600, `KEY=VALUE`), до первого
+запуска таймера (запускается сразу после установки, далее каждые
+10 минут):
 
 ```bash
 sudo tee /etc/alatyr-agent/config.env >/dev/null <<'EOF'
@@ -211,8 +237,8 @@ systemd `alatyr-agent.timer` (загрузка + каждые 10 мин) и
 `--user`-юнит `alatyr-agent-user.service` (для корпоративного пользователя,
 через `loginctl enable-linger` + `systemctl --user enable --now`). Это
 постоянный процесс, работающий от имени интерактивного пользователя (не
-`root`/`SYSTEM`), который провижинит `user_mtls` и поднимает аппаратный
-ssh-agent — подробнее в [«Агенты»](agents.md).
+`root`/`SYSTEM`), который выпускает и устанавливает ключ `user_mtls` и
+поднимает аппаратный ssh-agent — подробнее в [«Агенты»](agents.md).
 
 Параметры `alatyr-agent run` (CLI-флаг > env var > `config.env`):
 
@@ -227,11 +253,16 @@ ssh-agent — подробнее в [«Агенты»](agents.md).
 
 TPM 2.0 — soft dependency: без пакета `tpm2-pkcs11`/`libtpm2-pkcs11-1` агент
 использует программный fallback-ключ в `/var/lib/alatyr-agent/wifi-cert.<serial>.pem`
-(0600). При production-раскатке с реальным TPM обязательны все 5 пакетов
-(`tpm2-tools`, `libtpm2-pkcs11-1`, `libtpm2-pkcs11-tools`, `p11-kit`,
-`libengine-pkcs11-openssl` — Debian/Ubuntu, аналоги для Fedora/RHEL) —
-без последнего (`libengine-pkcs11-openssl`) enroll и выпуск сертификата
-пройдут нормально, но реальное Wi-Fi-подключение завершится ошибкой на этапе EAP-TLS.
+(0600). При production-развёртывании с реальным TPM обязательны все 5
+пакетов: `tpm2-tools`, `libtpm2-pkcs11-1`, `libtpm2-pkcs11-tools`, `p11-kit`,
+`libengine-pkcs11-openssl` (Debian/Ubuntu, аналоги для Fedora/RHEL).
+
+!!! warning "Без `libengine-pkcs11-openssl` реальный Wi-Fi не заработает"
+
+    Enroll и выпуск сертификата пройдут нормально даже без этого пакета —
+    ошибка проявится позже и не сразу: реальное Wi-Fi-подключение
+    завершится ошибкой на этапе EAP-TLS. Устанавливайте все 5 пакетов из
+    списка выше, а не только первые четыре.
 
 Диагностика:
 
@@ -254,7 +285,7 @@ sudo /usr/local/bin/alatyr-agent status --state-file /var/lib/alatyr-agent/state
 
 В отличие от Linux/Windows, готового бинарного пакета «как есть» не
 поставляется — организация обязана собрать и подписать `.pkg`
-самостоятельно под свой Apple Developer аккаунт, потому что идентичность
+самостоятельно под свой Apple Developer аккаунт. Идентичность
 привязывается к CryptoTokenKit Secure Enclave token extension внутри `.app`,
 который должен быть подписан вашим собственным Developer ID и
 нотаризован Apple. Кратко процесс:
@@ -269,11 +300,13 @@ sudo /usr/local/bin/alatyr-agent status --state-file /var/lib/alatyr-agent/state
    `.app`, подписывает, нотаризует, упаковывает в `.pkg`
    (`dist/alatyr-agent-<version>.pkg`). `SKIP_NOTARIZE=1` — для
    локального теста на собственной машине без отправки на серверы Apple.
-3. Раскатить `.pkg` через MDM (например, FleetDM — Software → Add Software
+3. Развернуть `.pkg` через MDM (например, FleetDM — Software → Add Software
    → выбрать устройства → Install) либо установить вручную.
 
 Ручная установка с параметрами конкретного устройства — через
-`install-pkg.sh` (preseed-файл, читаемый postinstall-скриптом):
+`install-pkg.sh` (preseed-файл, читаемый postinstall-скриптом). Сам агент
+после установки запускается с теми же флагами `alatyr-agent run`, что и на
+остальных платформах — см. таблицу в разделе [Linux](#linux):
 
 ```bash
 sudo bash install-pkg.sh \
@@ -288,7 +321,7 @@ sudo bash install-pkg.sh \
     macOS `installer` не пробрасывает env vars в postinstall-скрипт —
     `sudo CORP_EMAIL=x installer -pkg ...` **не работает** и молча
     откатится на auto-detect (`<shortname>@<CORP_DOMAIN>` или
-    LDAP/AD-атрибут, если мак привязан к домену). Задавайте email только
+    LDAP/AD-атрибут, если Mac включён в домен). Задавайте email только
     через `install-pkg.sh --corp-email` или ручной preseed-файл.
 
 !!! note "Headless-машины без активной GUI-сессии не получат сертификат"
@@ -334,7 +367,8 @@ Import-Certificate -FilePath .\wca\alatyr-agent-codesign-cert.crt `
 1. Копирует бинарь в `C:\Program Files\AlatyrAgent\alatyr-agent.exe` с
    restrictive NTFS ACL (запись — только `SYSTEM`/`Administrators`, обычным
    пользователям — только чтение/исполнение; без этого подмена бинаря
-   пользователем без прав дала бы RCE от `SYSTEM` на следующем тике задачи).
+   пользователем без прав дала бы RCE от `SYSTEM` на очередном запуске
+   задачи).
 2. Пишет конфиг в `C:\ProgramData\AlatyrAgent\config.env` (ACL: только
    `SYSTEM` + `Administrators`).
 3. Регистрирует Scheduled Task `AlatyrAgent` — запуск от `SYSTEM` с
@@ -344,10 +378,15 @@ Import-Certificate -FilePath .\wca\alatyr-agent-codesign-cert.crt `
 4. Дополнительно регистрирует второй Scheduled Task, `AlatyrAgentUser` —
    logon-triggered, запускается от имени интерактивного пользователя (не
    `SYSTEM`), по одному экземпляру на каждого вошедшего пользователя.
-   Выполняет DPAPI token handoff от SYSTEM-процесса и провижининг
+   Выполняет DPAPI token handoff от SYSTEM-процесса и выпуск/установку
    per-user CNG-ключа (`user_mtls`) — подробнее в [«Агенты»](agents.md).
 
-Раскат через FleetDM (или аналогичный MDM с поддержкой скриптов) —
+Флаги `alatyr-agent.exe run` (`--server`, `--ca-cert`, `--poll-interval` и
+т.д.) те же, что и на остальных платформах — см. таблицу в разделе
+[Linux](#linux); отличаются только пути по умолчанию (`config.env` и
+`state.json` — в `C:\ProgramData\AlatyrAgent\`).
+
+Развёртывание через FleetDM (или аналогичный MDM с поддержкой скриптов) —
 загрузить zip как software package и настроить install-команду,
 разворачивающую архив и запускающую `install.ps1` с нужными параметрами;
 подробности и пример команды — в `README.md` внутри пакета.

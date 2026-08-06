@@ -6,11 +6,6 @@
 аккаунты, сети) — в [Администрирование](administration.md); за SSH Key
 Registry и Keyholder API отдельно — в [SSH Key Registry](ssh-keys.md).
 
-!!! note "Полнота списка"
-    Список ниже охватывает все API-эндпоинты сервера Alatyr (за
-    исключением `GET /swagger/*any` — это документационная инфраструктура,
-    не часть API) и обновляется вместе с релизами.
-
 Базовый префикс — `/api/v1` (кроме `GET /health`). Формат ответа — JSON
 (кроме `GET /api/v1/ssh/krl`, отдающего бинарный OpenSSH KRL-файл, и
 `GET /api/v1/certificates/{serial}/bundle`, отдающего ZIP).
@@ -28,7 +23,7 @@ Registry и Keyholder API отдельно — в [SSH Key Registry](ssh-keys.md
 
 - `POST /api/v1/enroll`, `/enroll/user`, `/enroll/ssh`, `/enroll/ssh-key` —
   неаутентифицированы на входе (создание заявки), но подчиняются
-  собственным гейтам (nonce, source-auth, corp-verify, rate-limit).
+  собственным проверкам (nonce, source-auth, corp-verify, rate-limit).
 - `GET /api/v1/requests/{id}/status`, `/bundle-version`, `/certificate` и
   `POST /api/v1/requests/{id}/checkin`, `/logs` — заголовок
   `X-Agent-Secret`, выданный при `/enroll`.
@@ -58,7 +53,7 @@ Registry и Keyholder API отдельно — в [SSH Key Registry](ssh-keys.md
 | `GET /api/v1/requests/{id}/status` | Статус заявки на выпуск |
 | `POST /api/v1/requests/{id}/checkin` | Check-in агента (подтверждение установки сертификата) |
 | `POST /api/v1/requests/{id}/logs` | Загрузка снапшота лога агента |
-| `GET /api/v1/requests/{id}/bundle-version` | Лёгкий probe версии бандла для steady-state синхронизации SSID — агент дёргает почти на каждом тике; тяжёлый `.../certificate` вызывается только при расхождении версии |
+| `GET /api/v1/requests/{id}/bundle-version` | Лёгкий probe версии бандла для steady-state синхронизации SSID — агент вызывает его почти на каждой итерации; тяжёлый `.../certificate` вызывается только при расхождении версии |
 | `GET /api/v1/requests/{id}/certificate` | Скачивание подписанного сертификата + CA bundle (поддерживает ETag/If-None-Match для steady-state поллинга) |
 
 ## SSH (`ssh`)
@@ -85,7 +80,7 @@ Registry и Keyholder API отдельно — в [SSH Key Registry](ssh-keys.md
 
 | Метод и путь | Назначение |
 |---|---|
-| `GET /api/v1/keyholder/keys` | Резолв логина в список активных SSH публичных ключей (для `AuthorizedKeysCommand`) |
+| `GET /api/v1/keyholder/keys` | Возвращает список активных SSH публичных ключей для логина (для `AuthorizedKeysCommand`) |
 | `GET /api/v1/admin/keyholder-tokens` | Список токенов keyholder-серверов (без значений) |
 | `POST /api/v1/admin/keyholder-tokens` | Создание нового токена keyholder-сервера |
 | `DELETE /api/v1/admin/keyholder-tokens/{id}` | Отзыв токена keyholder-сервера |
@@ -118,7 +113,7 @@ Registry и Keyholder API отдельно — в [SSH Key Registry](ssh-keys.md
 | Метод и путь | Назначение |
 |---|---|
 | `GET /api/v1/certificates/{serial}/bundle` | Скачать бандл сертификата как ZIP |
-| `POST /api/v1/certificates/{serial}/revoke` | Отозвать сертификат (недоступно для SCEP-issued — см. [Траблшутинг](troubleshooting.md)) |
+| `POST /api/v1/certificates/{serial}/revoke` | Отозвать сертификат (недоступно для SCEP-issued — см. [Диагностика и ограничения](troubleshooting.md)) |
 | `GET /api/v1/audit` | Список записей аудит-лога |
 | `GET /api/v1/audit.csv` | То же, экспорт CSV |
 | `GET /api/v1/admin/stats` | Статистика дашборда |
@@ -166,7 +161,7 @@ Registry и Keyholder API отдельно — в [SSH Key Registry](ssh-keys.md
 | `DELETE /api/v1/admin/webhooks/{id}` | Удалить webhook-эндпоинт |
 | `PUT /api/v1/admin/webhooks/{id}/enabled` | Включить/выключить webhook-эндпоинт |
 | `POST /api/v1/admin/webhooks/{id}/test` | Отправить тестовую доставку |
-| `GET /api/v1/admin/webhooks/{id}/deliveries` | Постраничный журнал доставок webhook-эндпоинта — см. [Эксплуатация](operations.md#webhook-outbox) |
+| `GET /api/v1/admin/webhooks/{id}/deliveries` | Постраничный журнал доставок webhook-эндпоинта — см. [Эксплуатация](operations.md#мониторинг-webhook-очереди-outbox) |
 
 ## Settings (`settings`)
 
