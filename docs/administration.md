@@ -47,7 +47,7 @@
 | Сети (Wi-Fi/802.1X) | `cert-admin`/`cert-approver`/`cert-viewer` | `cert-admin` |
 | Сервисные аккаунты | `cert-admin` (недоступно самим сервисным аккаунтам) | `cert-admin` |
 | Вебхуки | `cert-admin` | `cert-admin` |
-| Настройки — Issuers / Issue Policy / Security Defaults / Licensing / Agent Update / Source-auth | любая admin-роль (read) | `cert-admin` |
+| Настройки — Issuers / Issue Policy / Security Defaults / Licensing ([подробнее](licensing.md)) / Agent Update / Source-auth | любая admin-роль (read) | `cert-admin` |
 | Настройки — Corp Verify (allowlist), SSH-ключи (keyholder tokens) | `cert-admin` (read тоже, не «любая admin-роль») | `cert-admin` |
 
 !!! note "Настройки — не единый блок прав"
@@ -95,7 +95,7 @@
 именно не совпало: версия, подпись или цепочка аттестации.
 
 **Когда включать.** Функция рассчитана на поэтапный запуск: сначала `off`
-(чтобы через обычный канал обновления агентов сначала попали сборки с
+(чтобы через ваш обычный канал распространения пакетов сначала попали сборки с
 поддержкой подписи), затем `version_floor` (вытеснить старые агенты), затем
 `attestation_hardgate`, и только после стабилизации — `strict`. Переход
 сразу к `strict` не рекомендуется.
@@ -145,7 +145,8 @@ admin-роль, запись — только `cert-admin`). Каждое изм
 все они отозвались успешно**, дополнительно ставит на устройство постоянную
 блокировку: `blocked_at`/`blocked_by`/`blocked_reason`, аудит-запись
 `device.block`. Частичный сбой отзыва (HTTP 207) блокировку не ставит —
-та же проверка, что уже защищает освобождение license-слота.
+та же проверка, что уже защищает освобождение license-слота (см.
+[Лицензирование](licensing.md#отзыв-удаление-записи-и-decommission--в-чём-разница)).
 
 - **`POST /api/v1/devices/{serial}/unblock`** (`cert-admin`, идемпотентен) —
   единственный способ снять блокировку: явное, обратимое человеческое

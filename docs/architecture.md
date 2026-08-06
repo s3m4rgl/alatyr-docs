@@ -1,4 +1,4 @@
-# Архитектура
+# Архитектура и PKI
 
 ## Компоненты и потоки данных
 
@@ -19,7 +19,7 @@ flowchart LR
 
     subgraph Server["Alatyr Server (Go)"]
         Unauth["/enroll, /enroll/user, /enroll/ssh,<br/>/enroll/ssh-key, /requests/:id/checkin, /auth/*<br/>(без авторизации, per-IP rate-limit)"]
-        AdminAPI["Admin API<br/>требует роль<br/>(cert-viewer / cert-approver / cert-admin)"]
+        AdminAPI["Admin API<br/>требует роль<br/>(cert-viewer / cert-approver /<br/>cert-admin / cert-auto-approver)"]
         PKIReg["PKI Registry<br/>(независимый PKI-бэкенд на каждый purpose)"]
         Outbox["Webhook outbox<br/>(очередь исходящих событий)"]
         Keyholder["Keyholder API<br/>(без авторизации, per-IP allowlist,<br/>не per-role)"]
@@ -53,7 +53,12 @@ Keyholder API — не самостоятельный сервис, а отде�
 Заявки на выпуск всегда создаются через неавторизованные
 `/enroll*`-эндпоинты (по токену регистрации устройства, не по учётной
 записи администратора) и переходят в статус `pending`; их рассматривает
-администратор через Admin API, требующий роль `cert-approver`/`cert-admin`.
+администратор через Admin API, требующий роль `cert-approver`/`cert-admin`,
+либо — без участия человека — сервисный аккаунт с ролью
+`cert-auto-approver`, машинной ролью наименьших привилегий, которая умеет
+только одобрять заявки, проходящие независимую последовательность
+проверок (аппаратная аттестация, purpose, corp-ownership и т.д.); подробно
+про роли и это автоодобрение — [Администрирование](administration.md#роли).
 Сертификатный SSH не выпускается автоматически: `/enroll/ssh`, как и
 `/enroll/user`, всегда оставляет заявку в `pending`. У отдельной
 подсистемы SSH Key Registry — своя настройка автоодобрения, см.
@@ -76,7 +81,7 @@ Alatyr не использует единый глобальный CA. Кажд�
 ```mermaid
 flowchart TD
     Reg["Выбор источника выпуска<br/>по типу сертификата/ключа"]
-    Reg -->|wifi| B1{"backend?<br/>(если не настроен —<br/>fallback на Vault)"}
+    Reg -->|wifi| B1{"backend?<br/>(если не настроен —<br/>fallback на ALATYR_ISSUER)"}
     Reg -->|user_mtls| B2{"backend?<br/>(источник должен быть<br/>явно настроен)"}
     Reg -->|ad_logon| B3["только SCEP<br/>(Vault PKI не умеет выпускать<br/>расширение, необходимое<br/>для KB5014754)"]
     Reg -->|ssh| B4["только Vault SSH<br/>secrets engine<br/>(без отзыва/ротации через CA —<br/>у этого механизма своя модель)"]
@@ -93,11 +98,13 @@ flowchart TD
 держать `wifi` на Vault, а `ad_logon` на корпоративном NDES/ADCS
 одновременно. `wifi` — единственный purpose с fallback-поведением: если
 для него нет строки в `issuer_profiles` (или она выключена), сервер
-использует Vault-issuer, сконфигурированный переменными окружения при
-старте — это гарантирует, что развёртывания без per-purpose PKI работают
-без изменений. У `user_mtls`, `ad_logon` и `ssh` такого fallback нет:
-без явно настроенного и включённого профиля выпуск для этих purpose
-отклоняется.
+использует issuer, заданный переменной окружения `ALATYR_ISSUER`
+(по умолчанию `vault`, но может быть и `scep` — см.
+[Конфигурация](configuration.md#pki-issuer-vault--внешний-scep-ca)),
+сконфигурированный при старте, — это гарантирует, что развёртывания без
+per-purpose PKI работают без изменений. У `user_mtls`, `ad_logon` и `ssh`
+такого fallback нет: без явно настроенного и включённого профиля выпуск
+для этих purpose отклоняется.
 
 `ad_logon` — единственный purpose с жёстко зафиксированным источником
 выпуска: сервер всегда требует SCEP для этого purpose, независимо от

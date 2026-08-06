@@ -7,19 +7,36 @@
  * это же обеспечивает читаемость в тёмном оформлении.
  *
  * Клик по схеме открывает её увеличенной: масштаб колесом или щипком,
- * перетаскивание мышью, Esc — закрыть.
+ * перетаскивание мышью, Esc — закрыть. Схема также открывается с клавиатуры
+ * (Tab + Enter/Space).
+ *
+ * Деградация: если CDN с mermaid недоступен или загрузка зависла (например,
+ * за корпоративным прокси) — читатель должен увидеть понятное сообщение и
+ * исходный текст схемы, а не пустое место без единого слова.
  */
 (function () {
   "use strict";
 
   var MERMAID_URL = "https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.esm.min.mjs";
+  var MERMAID_LOAD_TIMEOUT_MS = 7000;
   var OVERLAY_ID = "diagram-zoom-overlay";
   var mermaidPromise = null;
   var viewer = null;
+  var paletteObserver = null;
+  /* Поколение перерисовки: растёт на каждый renderAll(), чтобы устаревшие
+   * асинхронные результаты (например, от предыдущей темы) не перетирали
+   * актуально отрисованную схему при быстром двойном переключении темы. */
+  var renderGeneration = 0;
 
   function isDark() {
     var scheme = document.body.getAttribute("data-md-color-scheme");
     return scheme === "slate";
+  }
+
+  function escapeHtml(str) {
+    return str.replace(/[&<>]/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c];
+    });
   }
 
   /* Явная палитра: одинаково читаема на светлом и тёмном фоне. */
@@ -58,11 +75,23 @@
   }
 
   function loadMermaid() {
-    if (!mermaidPromise) {
-      mermaidPromise = import(MERMAID_URL).then(function (mod) {
-        return mod.default;
-      });
-    }
+    if (mermaidPromise) return mermaidPromise;
+
+    var importPromise = import(MERMAID_URL).then(function (mod) {
+      return mod.default;
+    });
+    var timeoutPromise = new Promise(function (resolve, reject) {
+      setTimeout(function () {
+        reject(new Error("mermaid load timeout"));
+      }, MERMAID_LOAD_TIMEOUT_MS);
+    });
+
+    mermaidPromise = Promise.race([importPromise, timeoutPromise]).catch(function (err) {
+      // не кэшируем неудачу — сеть могла отвиснуть, следующая перерисовка
+      // (например, смена темы) должна получить шанс попробовать снова
+      mermaidPromise = null;
+      throw err;
+    });
     return mermaidPromise;
   }
 
@@ -76,6 +105,7 @@
     overlay.className = "dz-overlay";
     overlay.setAttribute("role", "dialog");
     overlay.setAttribute("aria-modal", "true");
+    overlay.setAttribute("aria-label", "Просмотр схемы");
     overlay.innerHTML =
       '<div class="dz-toolbar">' +
       '<button type="button" class="dz-btn" data-dz="out" aria-label="Уменьшить">&minus;</button>' +
@@ -92,8 +122,10 @@
   function Viewer(overlay) {
     var canvas = overlay.querySelector(".dz-canvas");
     var stage = overlay.querySelector(".dz-stage");
+    var closeBtn = overlay.querySelector('[data-dz="close"]');
     var scale = 1, tx = 0, ty = 0;
     var dragging = false, lastX = 0, lastY = 0, pinch = 0;
+    var lastTrigger = null;
 
     function apply() {
       canvas.style.transform = "translate(" + tx + "px," + ty + "px) scale(" + scale + ")";
@@ -114,6 +146,11 @@
       overlay.classList.remove("dz-open");
       document.body.classList.remove("dz-lock");
       canvas.textContent = "";
+      // возвращаем фокус туда, откуда открыли модалку
+      if (lastTrigger && typeof lastTrigger.focus === "function") {
+        lastTrigger.focus();
+      }
+      lastTrigger = null;
     }
 
     stage.addEventListener("wheel", function (e) {
@@ -177,81 +214,126 @@
     });
 
     return {
-      open: function (svgEl) {
+      open: function (svgEl, trigger) {
+        lastTrigger = trigger || null;
         canvas.textContent = "";
         canvas.appendChild(svgEl);
         reset();
         overlay.classList.add("dz-open");
         document.body.classList.add("dz-lock");
+        // фокус сразу на кнопку закрытия — чтобы клавиатурный пользователь
+        // не терял место на странице внутри модалки
+        if (closeBtn) closeBtn.focus();
       },
       close: close
     };
   }
 
+  function openBlock(block) {
+    var svg = block.querySelector("svg");
+    if (!svg) return;
+    var clone = svg.cloneNode(true);
+    clone.removeAttribute("width");
+    clone.removeAttribute("height");
+    clone.style.maxWidth = "none";
+    clone.style.width = "min(92vw, 1700px)";
+    clone.style.height = "auto";
+    viewer.open(clone, block);
+  }
+
   /* ---------- отрисовка ---------- */
+
+  function showLoading(block) {
+    block.classList.remove("dz-zoomable", "dz-failed");
+    block.removeAttribute("tabindex");
+    block.removeAttribute("role");
+    block.innerHTML = '<p class="dz-loading">Загрузка схемы…</p>';
+  }
+
+  function showError(block, src) {
+    block.classList.remove("dz-zoomable");
+    block.classList.add("dz-failed");
+    block.removeAttribute("tabindex");
+    block.removeAttribute("role");
+    block.innerHTML =
+      '<p class="dz-error">Не удалось отрисовать схему. ' +
+      "Исходник ниже.</p><pre>" + escapeHtml(src || "") + "</pre>";
+  }
 
   function renderAll() {
     var blocks = Array.prototype.slice.call(document.querySelectorAll(".mermaid-src"));
     if (!blocks.length) return;
 
+    renderGeneration += 1;
+    var generation = renderGeneration;
+
+    // сохраняем исходник и сразу показываем плейсхолдер — до готовности
+    // схемы читатель не должен видеть пустое место
+    blocks.forEach(function (block) {
+      if (!block.dataset.src) {
+        block.dataset.src = (block.textContent || "").trim();
+      }
+      showLoading(block);
+    });
+
     loadMermaid().then(function (mermaid) {
+      if (generation !== renderGeneration) return; // палитра успела смениться повторно
+
       mermaid.initialize(themeConfig());
       if (!viewer) viewer = Viewer(buildOverlay());
 
       blocks.forEach(function (block, i) {
-        // исходник храним, чтобы можно было перерисовать при смене темы
-        if (!block.dataset.src) {
-          block.dataset.src = (block.textContent || "").trim();
-        }
         var src = block.dataset.src;
         if (!src) return;
 
-        var id = "dz-mmd-" + i + "-" + (isDark() ? "d" : "l");
+        var id = "dz-mmd-" + generation + "-" + i + "-" + (isDark() ? "d" : "l");
         mermaid.render(id, src).then(function (res) {
+          if (generation !== renderGeneration) return; // устаревший рендер — отбрасываем
           block.innerHTML = res.svg;
+          block.classList.remove("dz-failed");
           block.classList.add("dz-zoomable");
           block.setAttribute("title", "Нажмите, чтобы открыть схему крупнее");
+          block.setAttribute("tabindex", "0");
+          block.setAttribute("role", "button");
+          block.setAttribute("aria-label", "Открыть схему крупнее");
           if (!block.dataset.dzBound) {
             block.dataset.dzBound = "1";
-            block.addEventListener("click", function () {
-              var svg = block.querySelector("svg");
-              if (!svg) return;
-              var clone = svg.cloneNode(true);
-              clone.removeAttribute("width");
-              clone.removeAttribute("height");
-              clone.style.maxWidth = "none";
-              clone.style.width = "min(92vw, 1700px)";
-              clone.style.height = "auto";
-              viewer.open(clone);
+            block.addEventListener("click", function () { openBlock(block); });
+            block.addEventListener("keydown", function (e) {
+              if (e.key === "Enter" || e.key === " " || e.key === "Spacebar") {
+                e.preventDefault();
+                openBlock(block);
+              }
             });
           }
         }).catch(function (err) {
-          block.innerHTML =
-            '<p class="dz-error">Не удалось отрисовать схему. ' +
-            "Исходник ниже.</p><pre>" +
-            src.replace(/[&<>]/g, function (c) {
-              return { "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c];
-            }) + "</pre>";
+          if (generation !== renderGeneration) return;
+          showError(block, src);
           if (window.console) console.warn("mermaid render failed", err);
         });
       });
     }).catch(function (err) {
+      if (generation !== renderGeneration) return;
+      // CDN недоступен либо загрузка зависла дольше таймаута — та же
+      // деградация, что и при ошибке рендера одной схемы: сообщение и исходник
+      blocks.forEach(function (block) {
+        showError(block, block.dataset.src);
+      });
       if (window.console) console.warn("mermaid load failed", err);
     });
   }
 
   /* Перерисовка при переключении светлой/тёмной темы. */
   function watchPalette() {
+    if (paletteObserver) return; // уже наблюдаем — не плодить MutationObserver'ы
     var last = isDark();
-    new MutationObserver(function () {
+    paletteObserver = new MutationObserver(function () {
       if (isDark() !== last) {
         last = isDark();
-        document.querySelectorAll(".mermaid-src").forEach(function (b) {
-          b.classList.remove("dz-zoomable");
-        });
         renderAll();
       }
-    }).observe(document.body, { attributes: true, attributeFilter: ["data-md-color-scheme"] });
+    });
+    paletteObserver.observe(document.body, { attributes: true, attributeFilter: ["data-md-color-scheme"] });
   }
 
   function boot() {

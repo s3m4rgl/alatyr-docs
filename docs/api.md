@@ -104,7 +104,7 @@ Registry и Keyholder API отдельно — в [SSH Key Registry](ssh-keys.md
 | `POST /api/v1/devices/{serial}/request-logs` | Запросить свежий снапшот логов с устройства |
 | `DELETE /api/v1/devices/{serial}/request-logs` | Отменить ожидающий запрос логов |
 | `POST /api/v1/devices/{serial}/rotate-enrollment-token` | Ротация enrollment-токена устройства |
-| `POST /api/v1/devices/{serial}/revoke` | Отозвать все активные сертификаты устройства и освободить license-слот |
+| `POST /api/v1/devices/{serial}/revoke` | Отозвать все активные сертификаты устройства и, если это удалось для каждого из них, освободить license-слот (decommission) — подробнее в [Лицензировании](licensing.md#отзыв-удаление-записи-и-decommission--в-чём-разница) |
 | `POST /api/v1/devices/{serial}/unblock` | Снять блокировку устройства (device-block-on-revoke) |
 | `POST /api/v1/users/{identity}/revoke-certs` | Отозвать все активные сертификаты пользователя (по identity) |
 
@@ -173,7 +173,7 @@ Registry и Keyholder API отдельно — в [SSH Key Registry](ssh-keys.md
 | `GET /api/v1/settings/issuers/{purpose}` | Получить один issuer-профиль |
 | `PUT /api/v1/settings/issuers/{purpose}` | Создать/обновить issuer-профиль |
 | `POST /api/v1/settings/issuers/{purpose}/test-connection` | Проверить связность issuer-профиля |
-| `GET /api/v1/settings/agent-update/stuck` | Список устройств, застрявших в процессе принудительного обновления агента |
+| `GET /api/v1/settings/agent-update/stuck` | Служебный список устройств для контроля версий агента |
 
 ## Corp-ownership verification (`corp-verify`)
 
@@ -194,6 +194,9 @@ Registry и Keyholder API отдельно — в [SSH Key Registry](ssh-keys.md
 | `PUT /api/v1/settings/enroll-source-auth` | Обновить политику enroll source-auth |
 
 ## Лицензия (`license`)
+
+Подробное описание лимита, статусов, decommission и восстановления журнала
+учёта — в [Лицензировании](licensing.md).
 
 | Метод и путь | Назначение |
 |---|---|
