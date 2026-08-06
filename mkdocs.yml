@@ -35,19 +35,39 @@ markdown_extensions:
   - pymdownx.highlight
   - toc:
       permalink: true
+      slugify: !!python/object/apply:pymdownx.slugs.slugify
+        kwds:
+          case: lower
   - tables
+
+plugins:
+  - search:
+      lang: ru
+
+extra_css:
+  - assets/css/diagram-zoom.css
+
+extra_javascript:
+  - assets/js/diagram-zoom.js
 
 nav:
   - Обзор: index.md
-  - Архитектура и PKI: architecture.md
-  - Resource Sizing: sizing.md
-  - Отказоустойчивость (HA): ha.md
-  - Установка: installation.md
-  - Конфигурация: configuration.md
-  - Администрирование: administration.md
-  - Агенты: agents.md
-  - SSH Key Registry: ssh-keys.md
-  - REST API: api.md
-  - Логирование: logging.md
-  - Эксплуатация: operations.md
-  - Траблшутинг: troubleshooting.md
+  - Сценарии применения: use-cases.md
+  - Знакомство с продуктом:
+      - Архитектура и PKI: architecture.md
+      - Расчёт ресурсов: sizing.md
+      - Отказоустойчивость (HA): ha.md
+      - Известные ограничения: limitations.md
+      - Лицензирование: licensing.md
+  - Развёртывание и настройка:
+      - Установка: installation.md
+      - Конфигурация: configuration.md
+  - Администрирование:
+      - Управление и роли: administration.md
+      - Агенты: agents.md
+      - SSH Key Registry: ssh-keys.md
+  - Справочник и эксплуатация:
+      - REST API: api.md
+      - Логирование: logging.md
+      - Эксплуатация: operations.md
+      - Диагностика и ограничения: troubleshooting.md
