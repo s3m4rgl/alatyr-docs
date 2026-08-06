@@ -1,7 +1,7 @@
 # Логирование
 
 Сервер и агент оба логируют структурно через [zap](https://github.com/uber-go/zap)
-— в проде JSON, одна строка на событие. Эта страница — про формат,
+— в продакшене JSON, одна строка на событие. Эта страница — про формат,
 уровни и где физически искать логи каждого компонента.
 
 ## Сервер
@@ -18,8 +18,8 @@
   человеком в терминале напрямую.
 - **`dev_mode=true`** — dev-профиль zap с цветным human-readable выводом.
 
-Каждая строка "starting alatyr-server" при старте несёт `version`,
-`commit`, `built_at` — тот же билд, что отдаёт `GET /api/v1/version` (см.
+Строка `starting alatyr-server`, которую сервер пишет при старте, несёт
+`version`, `commit`, `built_at` — тот же билд, что отдаёт `GET /api/v1/version` (см.
 раздел «Публичные и служебные» на странице [REST API](api.md)), так что
 любой лог-стрим прослеживается до конкретного бинаря.
 
@@ -58,8 +58,6 @@
 стектрейса в stderr, который сломал бы предположение «один JSON-стрим на
 stdout».
 
-В access-строке `request_id` присутствует один раз.
-
 ### Пример строки (прод, JSON)
 
 ```json
@@ -90,10 +88,10 @@ stdout и, если передан `--state-file`, дублируется («tee
 |---|---|
 | Linux | `journalctl -u alatyr-agent.service -f` (агент запускается как systemd `oneshot` по таймеру, свой файл не пишет — весь вывод идёт в journal) |
 | Windows | `C:\ProgramData\AlatyrAgent\agent.log` (плюс история запусков — Task Scheduler → Library → `AlatyrAgent`) |
-| macOS | `~/Library/Logs/WifiCertAgent/agent.log` (per-user LaunchAgent; отдельно `~/Library/Logs/WifiCertAgent/sshagent.log` — для процесса `ssh-agent`) |
+| macOS | `~/Library/Logs/AlatyrAgent/agent.log` (per-user LaunchAgent; отдельно `~/Library/Logs/AlatyrAgent/sshagent.log` — для процесса `ssh-agent`) |
 
-Имя каталога `WifiCertAgent` сохранено для совместимости с ранее
-установленными агентами.
+На машинах, где агент устанавливался раньше (до текущей версии), каталог
+может по-прежнему называться `WifiCertAgent`.
 
 ## Куда смотреть при разборе инцидента
 

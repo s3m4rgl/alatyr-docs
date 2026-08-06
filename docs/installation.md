@@ -24,7 +24,7 @@ Kubernetes. Оба варианта описаны ниже.
 
 | Файл | Назначение |
 |---|---|
-| `docker-compose.yml` | "Production-shaped" стек: PostgreSQL + сервер + UI. Ожидает уже настроенный внешний Vault (и, опционально, Keycloak) — сам их не поднимает. |
+| `docker-compose.yml` | «Production-shaped» стек: PostgreSQL + сервер + UI. Ожидает уже настроенный внешний Vault (и, опционально, Keycloak) — сам их не поднимает. |
 | `docker-compose.demo.yml` | Turnkey-демо: одна команда, ничего настраивать не нужно. Поднимает PostgreSQL, Vault (dev-режим), сервер, UI и наполняет БД тестовыми данными. |
 | `docker-compose.dev.yml` | Только dev-инфраструктура (PostgreSQL + Vault dev + Keycloak) — сервер и фронтенд предполагается гонять локально, либо в Docker через `--profile app`. |
 
@@ -97,7 +97,7 @@ docker compose -f docker-compose.demo.yml up --build
 
 ### Вариант 2 — Helm chart (Kubernetes)
 
-Доступен Helm-чарт alatyr-demo (`Chart.yaml`: `name: alatyr-demo`).
+Доступен Helm-чарт `alatyr-demo`.
 
 !!! warning "Это демонстрационный/референсный чарт, не подготовленный к продакшену"
 
@@ -252,7 +252,7 @@ sudo /usr/local/bin/alatyr-agent status --state-file /var/lib/alatyr-agent/state
 пользователь на одной машине проходит enroll отдельно и получает свой
 сертификат.
 
-В отличие от Linux/Windows, готового бинарного пакета "как есть" не
+В отличие от Linux/Windows, готового бинарного пакета «как есть» не
 поставляется — организация обязана собрать и подписать `.pkg`
 самостоятельно под свой Apple Developer аккаунт, потому что идентичность
 привязывается к CryptoTokenKit Secure Enclave token extension внутри `.app`,

@@ -8,7 +8,7 @@
 
 ## Роли
 
-Ровно четыре роли, назначаются через `PUT /api/v1/users/:email/roles`
+Ровно четыре роли, назначаются через `PUT /api/v1/users/{email}/roles`
 (`cert-admin` only) или, для локальных пользователей, при создании через
 `POST /api/v1/users/local`:
 
@@ -80,7 +80,7 @@
   эти проверки не выполняются — approve всегда разрешён (кроме терминальных
   статусов заявки).
 - **`POST /api/v1/requests/reject`** (bulk) — только `cert-admin`.
-- **`POST /api/v1/certificates/:serial/revoke`** — только `cert-admin`.
+- **`POST /api/v1/certificates/{serial}/revoke`** — только `cert-admin`.
   Для SCEP-выпущенных сертификатов недоступен (у SCEP нет операции отзыва
   — кнопка отключена в UI, API вернёт 400); отзывайте на стороне CA
   напрямую.
@@ -97,14 +97,14 @@
 
 ## Блокировка устройства при отзыве (device-block-on-revoke)
 
-Полный отзыв устройства — `POST /api/v1/devices/:serial/revoke` (`cert-admin`)
+Полный отзыв устройства — `POST /api/v1/devices/{serial}/revoke` (`cert-admin`)
 — отзывает все активные сертификаты устройства и, **только если абсолютно
 все они отозвались успешно**, дополнительно ставит на устройство постоянную
 блокировку: `blocked_at`/`blocked_by`/`blocked_reason`, аудит-запись
 `device.block`. Частичный сбой отзыва (HTTP 207) блокировку не ставит —
 тот же гейт, что уже защищает освобождение license-слота.
 
-- **`POST /api/v1/devices/:serial/unblock`** (`cert-admin`, идемпотентен) —
+- **`POST /api/v1/devices/{serial}/unblock`** (`cert-admin`, идемпотентен) —
   единственный способ снять блокировку: явное, обратимое человеческое
   действие. Повторный вызов на уже разблокированном устройстве — success,
   без ошибки. Unblock не трогает `pending`-заявки.
@@ -145,8 +145,8 @@
 |---|---|
 | `GET /api/v1/service-accounts` | Список |
 | `POST /api/v1/service-accounts` | Создать; токен `wca_*` показывается один раз в ответе |
-| `PUT /api/v1/service-accounts/:id/enabled` | Включить/выключить |
-| `DELETE /api/v1/service-accounts/:id` | Удалить |
+| `PUT /api/v1/service-accounts/{id}/enabled` | Включить/выключить |
+| `DELETE /api/v1/service-accounts/{id}` | Удалить |
 
 - В БД хранится только SHA-256-хэш токена; сырое значение — только при
   создании.
@@ -163,10 +163,10 @@
 
 ## Пользователи и роли
 
-`PUT /api/v1/users/:email/roles` и `PUT /api/v1/users/:email/enabled`
+`PUT /api/v1/users/{email}/roles` и `PUT /api/v1/users/{email}/enabled`
 (`cert-admin`) управляют ролями и активностью учётной записи. Локальные
 (не-SSO) пользователи создаются и управляются отдельными эндпоинтами
-(`POST /api/v1/users/local`, `PUT /api/v1/users/:email/password`) — детали
+(`POST /api/v1/users/local`, `PUT /api/v1/users/{email}/password`) — детали
 локальной аутентификации и bootstrap первого администратора см. в разделе
 про локальную аутентификацию на странице [Конфигурация](configuration.md).
 
