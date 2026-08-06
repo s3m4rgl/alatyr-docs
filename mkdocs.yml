@@ -70,4 +70,4 @@ nav:
       - REST API: api.md
       - Логирование: logging.md
       - Эксплуатация: operations.md
-      - Диагностика и ограничения: troubleshooting.md
+      - Диагностика: troubleshooting.md

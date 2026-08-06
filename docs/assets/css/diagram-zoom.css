@@ -5,7 +5,8 @@
   position: relative;
 }
 
-.dz-zoomable:hover {
+.dz-zoomable:hover,
+.dz-zoomable:focus-visible {
   outline: 2px solid var(--md-accent-fg-color, #526cfe);
   outline-offset: 4px;
   border-radius: 4px;
@@ -79,8 +80,11 @@ body.dz-lock {
   cursor: pointer;
 }
 
-.dz-btn:hover {
+.dz-btn:hover,
+.dz-btn:focus-visible {
   background: #fff;
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
 }
 
 .dz-close {
@@ -107,8 +111,10 @@ body.dz-lock {
   }
 }
 
-/* Схема до отрисовки — не показываем сырой текст */
-.mermaid-src:not(.dz-zoomable) > code {
+/* Схема до отрисовки — не показываем сырой текст. В состоянии ошибки
+ * (dz-failed) исходник, наоборот, должен быть виден — поэтому исключаем
+ * его из-под этого правила. */
+.mermaid-src:not(.dz-zoomable):not(.dz-failed) > code {
   display: none;
 }
 
@@ -122,7 +128,35 @@ body.dz-lock {
   height: auto;
 }
 
+.dz-loading {
+  color: var(--md-default-fg-color--light, #6b7280);
+  font-style: italic;
+}
+
 .dz-error {
   color: var(--md-typeset-color);
   font-style: italic;
+}
+
+.dz-failed pre {
+  overflow-x: auto;
+  text-align: left;
+}
+
+/* Печать / сохранение в PDF: модалка не нужна, широкие схемы должны
+ * вписываться в страницу, а не обрезаться скрытой прокруткой. */
+@media print {
+  .dz-overlay {
+    display: none !important;
+  }
+
+  .mermaid-src {
+    overflow-x: visible;
+  }
+
+  .mermaid-src svg {
+    max-width: 100% !important;
+    width: 100% !important;
+    height: auto !important;
+  }
 }
