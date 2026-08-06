@@ -106,3 +106,23 @@ body.dz-lock {
     display: none;
   }
 }
+
+/* Схема до отрисовки — не показываем сырой текст */
+.mermaid-src:not(.dz-zoomable) > code {
+  display: none;
+}
+
+.mermaid-src {
+  overflow-x: auto;
+  text-align: center;
+}
+
+.mermaid-src svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.dz-error {
+  color: var(--md-typeset-color);
+  font-style: italic;
+}

@@ -28,6 +28,21 @@ Alatyr, что заказчик разворачивает и настраива
     отношению к продукту зависимости, даже когда поставляемые манифесты
     поднимают их «в комплекте» для демонстрации.
 
+!!! info "Агент не участвует в работе после выдачи"
+
+    В сценариях Wi-Fi, mTLS и входа в домен агент только **записывает**
+    выданный сертификат в хранилище операционной системы. Дальше работают
+    штатные механизмы ОС: клиент 802.1X, TLS-стек приложения, вход
+    Windows. Агент — короткоживущий процесс по расписанию, он не работает
+    постоянно и не участвует в аутентификации: недоступность агента или
+    самого сервера Alatyr не разрывает уже работающие подключения и не
+    мешает входу в систему. Пока сертификат действителен, всё продолжает
+    работать без Alatyr.
+
+    Единственное исключение — **SSH**: там подпись выполняется аппаратным
+    ssh-agent'ом внутри процесса агента, поэтому для SSH агент должен быть
+    запущен. Подробности — в разделе про SSH ниже.
+
 ## Wi-Fi и проводной доступ по 802.1X (EAP-TLS)
 
 Самый частый сценарий: сотрудники подключаются к корпоративной сети без
@@ -42,6 +57,7 @@ flowchart TD
     subgraph DeviceBox["Устройство сотрудника"]
         HW["TPM 2.0 / Secure Enclave"]
         Agent["Агент Alatyr"]
+        OS["Сетевой стек ОС<br/>клиент 802.1X"]
     end
 
     subgraph AlatyrBox["Входит в Alatyr"]
@@ -57,16 +73,17 @@ flowchart TD
     Agent <--> |"2, 6"| Server
     Admin --> |"3"| Server
     Server <--> |"4, 5"| PKI
-    Agent --> |"7"| Net
-    Net --> |"8"| Radius
-    Radius --> |"9"| PKI
+    Agent --> |"7"| OS
+    OS --> |"8"| Net
+    Net --> |"9"| Radius
+    Radius --> |"10"| PKI
 
     classDef alatyr fill:#dbeafe,stroke:#2563eb,stroke-width:2px,color:#111827
     classDef external fill:#f3f4f6,stroke:#9ca3af,stroke-width:1px,stroke-dasharray: 4 3,color:#111827
     classDef device fill:#dcfce7,stroke:#16a34a,stroke-width:2px,color:#111827
     class Agent,Server,Admin alatyr
     class PKI,Net,Radius external
-    class HW device
+    class HW,OS device
 ```
 
 ### В каком порядке это происходит
@@ -75,6 +92,7 @@ flowchart TD
 sequenceDiagram
     participant HW as TPM / Secure Enclave
     participant Agent as Агент Alatyr
+    participant OS as Сетевой стек ОС
     participant Admin as Admin UI
     participant Server as Сервер Alatyr
     participant PKI as PKI-бэкенд
@@ -87,9 +105,11 @@ sequenceDiagram
     Server->>PKI: 4. подписать
     PKI-->>Server: 5. сертификат
     Server-->>Agent: 6. сертификат + профиль 802.1X
-    Agent->>Net: 7. подключение по EAP-TLS
-    Net->>Radius: 8. RADIUS
-    Radius->>PKI: 9. проверка цепочки и отзыва
+    Agent->>OS: 7. записать в хранилище ОС
+    Note over Agent: дальше агент не участвует
+    OS->>Net: 8. подключение по EAP-TLS
+    Net->>Radius: 9. RADIUS
+    Radius->>PKI: 10. проверка цепочки и отзыва
 ```
 
 ### Что означает каждый шаг
@@ -101,10 +121,11 @@ sequenceDiagram
 | 3 | Администратор одобряет заявку в Admin UI | Alatyr |
 | 4 | Сервер запрашивает подпись у PKI-бэкенда | Alatyr → заказчик |
 | 5 | PKI-бэкенд возвращает подписанный сертификат | Заказчик |
-| 6 | Сервер отдаёт агенту сертификат и профиль 802.1X, агент устанавливает их | Alatyr |
-| 7 | Устройство подключается к сети по EAP-TLS | Заказчик (сеть) |
-| 8 | Точка доступа передаёт аутентификацию RADIUS-серверу | Заказчик |
-| 9 | RADIUS-сервер проверяет цепочку доверия и отзыв (CRL или OCSP) | Заказчик |
+| 6 | Сервер отдаёт агенту сертификат и профиль 802.1X | Alatyr |
+| 7 | Агент записывает сертификат и профиль в хранилище ОС — на этом его работа заканчивается | Alatyr |
+| 8 | Штатный клиент 802.1X в ОС подключается к сети по EAP-TLS | ОС устройства |
+| 9 | Точка доступа передаёт аутентификацию RADIUS-серверу | Заказчик |
+| 10 | RADIUS-сервер проверяет цепочку доверия и отзыв (CRL или OCSP) | Заказчик |
 
 | Компонент | Чья зона |
 |---|---|
@@ -172,16 +193,17 @@ flowchart TD
     Agent <--> |"2, 6"| Server
     Admin --> |"3"| Server
     Server <--> |"4, 5"| PKI
-    Agent --> |"7"| Proxy
-    Proxy --> |"8"| PKI
-    Proxy --> |"9"| App
+    Agent --> |"7"| Store["Хранилище сертификатов ОС"]
+    Store --> |"8"| Proxy
+    Proxy --> |"9"| PKI
+    Proxy --> |"10"| App
 
     classDef alatyr fill:#dbeafe,stroke:#2563eb,stroke-width:2px,color:#111827
     classDef external fill:#f3f4f6,stroke:#9ca3af,stroke-width:1px,stroke-dasharray: 4 3,color:#111827
     classDef device fill:#dcfce7,stroke:#16a34a,stroke-width:2px,color:#111827
     class Agent,Server,Admin alatyr
     class PKI,Proxy,App external
-    class HW device
+    class HW,Store device
 ```
 
 ### В каком порядке это происходит
@@ -192,6 +214,7 @@ sequenceDiagram
     participant Agent as Агент Alatyr
     participant Admin as Admin UI
     participant Server as Сервер Alatyr
+    participant Store as Хранилище ОС
     participant PKI as Intermediate CA
     participant Proxy as Точка терминации mTLS
     participant App as Приложение
@@ -202,9 +225,11 @@ sequenceDiagram
     Server->>PKI: 4. подписать
     PKI-->>Server: 5. сертификат
     Server-->>Agent: 6. сертификат
-    Agent->>Proxy: 7. TLS с клиентским сертификатом
-    Proxy->>PKI: 8. проверка по этому intermediate
-    Proxy->>App: 9. проверенная идентичность
+    Agent->>Store: 7. записать в хранилище ОС
+    Note over Agent: дальше агент не участвует
+    Store->>Proxy: 8. TLS с клиентским сертификатом
+    Proxy->>PKI: 9. проверка по этому intermediate
+    Proxy->>App: 10. проверенная идентичность
 ```
 
 ### Что означает каждый шаг
@@ -216,10 +241,11 @@ sequenceDiagram
 | 3 | Администратор одобряет заявку — для `user_mtls` одобрение обязательно | Alatyr |
 | 4 | Сервер запрашивает подпись у отдельного intermediate CA | Alatyr → заказчик |
 | 5 | Intermediate CA возвращает подписанный сертификат | Заказчик |
-| 6 | Сервер отдаёт сертификат агенту, агент кладёт его в пользовательское хранилище | Alatyr |
-| 7 | Пользователь обращается к приложению по TLS с клиентским сертификатом | Заказчик |
-| 8 | Точка терминации mTLS проверяет сертификат по этому intermediate CA | Заказчик |
-| 9 | Приложение получает проверенную идентичность пользователя | Заказчик |
+| 6 | Сервер отдаёт сертификат агенту | Alatyr |
+| 7 | Агент кладёт сертификат в пользовательское хранилище ОС — на этом его работа заканчивается | Alatyr |
+| 8 | Приложение или браузер пользователя устанавливает TLS-соединение с клиентским сертификатом | ОС устройства |
+| 9 | Точка терминации mTLS проверяет сертификат по этому intermediate CA | Заказчик |
+| 10 | Приложение получает проверенную идентичность пользователя | Заказчик |
 
 | Компонент | Чья зона |
 |---|---|
@@ -312,6 +338,7 @@ sequenceDiagram
     NDES-->>Server: 6. сертификат
     Server-->>Agent: 7. сертификат
     Agent->>VSC: 8. поместить в смарт-карту
+    Note over Agent: дальше агент не участвует
     VSC->>DC: 9. вход по PIN смарт-карты
     DC->>DC: 10. проверка доверия к CA (NTAuth)
 ```
@@ -327,8 +354,8 @@ sequenceDiagram
 | 5 | NDES выпускает сертификат в ADCS по шаблону Smart Card Logon | Заказчик |
 | 6 | Сертификат возвращается серверу | Заказчик |
 | 7 | Сервер отдаёт сертификат агенту | Alatyr |
-| 8 | Агент помещает сертификат в виртуальную смарт-карту | Alatyr |
-| 9 | Пользователь входит в домен по PIN смарт-карты вместо пароля | Заказчик |
+| 8 | Агент помещает сертификат в виртуальную смарт-карту — на этом его работа заканчивается | Alatyr |
+| 9 | Пользователь входит в домен по PIN смарт-карты вместо пароля; вход выполняет сама Windows | ОС устройства |
 | 10 | Контроллер домена проверяет, что CA доверен для доменной аутентификации | Заказчик |
 
 | Компонент | Чья зона |
