@@ -1,0 +1,53 @@
+site_name: Alatyr — Документация
+site_description: Управление сертификатами и SSH-ключами устройств для 802.1X EAP-TLS и SSH-доступа
+site_url: https://s3m4rgl.github.io/alatyr-docs/
+repo_url: https://github.com/s3m4rgl/alatyr-docs
+docs_dir: docs
+
+theme:
+  name: material
+  language: ru
+  palette:
+    - scheme: default
+      primary: indigo
+      toggle:
+        icon: material/weather-night
+        name: Тёмная тема
+    - scheme: slate
+      primary: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Светлая тема
+  features:
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+    - search.suggest
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.highlight
+  - toc:
+      permalink: true
+  - tables
+
+nav:
+  - Обзор: index.md
+  - Архитектура и PKI: architecture.md
+  - Resource Sizing: sizing.md
+  - Отказоустойчивость (HA): ha.md
+  - Установка: installation.md
+  - Конфигурация: configuration.md
+  - Администрирование: administration.md
+  - Агенты: agents.md
+  - SSH Key Registry: ssh-keys.md
+  - REST API: api.md
+  - Логирование: logging.md
+  - Эксплуатация: operations.md
+  - Траблшутинг: troubleshooting.md
