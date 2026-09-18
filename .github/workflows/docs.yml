@@ -25,7 +25,10 @@ jobs:
           python-version: "3.12"
       # Версия зафиксирована мажорно-минорно: плавающая версия темы однажды
       # уже молча ломала отрисовку схем (см. docs/assets/js/diagram-zoom.js).
-      - run: pip install "mkdocs-material~=9.7.0"
+      # Версия темы берётся из requirements.txt, а не дублируется здесь:
+      # два источника разъезжаются молча, и локальная сборка начинает
+      # отличаться от публикуемой.
+      - run: pip install -r requirements.txt
       - run: mkdocs build --strict
       - uses: actions/upload-pages-artifact@v3
         with:
