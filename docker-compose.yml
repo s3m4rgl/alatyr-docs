@@ -68,7 +68,11 @@ services:
       ALATYR_LOCAL_ACCESS_TTL_MIN: ${ALATYR_LOCAL_ACCESS_TTL_MIN:-${WIFI_CERT_LOCAL_ACCESS_TTL_MIN:-${LOCAL_ACCESS_TTL_MIN:-15}}}
       ALATYR_LOCAL_REFRESH_TTL_DAYS: ${ALATYR_LOCAL_REFRESH_TTL_DAYS:-${WIFI_CERT_LOCAL_REFRESH_TTL_DAYS:-${LOCAL_REFRESH_TTL_DAYS:-30}}}
     ports:
-      - "8090:8090"
+      # Внешний порт параметризован: 8090 и 3000 — самые занятые
+      # порты на машине, где уже что-то крутится, и зашитое значение
+      # означает правку манифеста при первом же столкновении. Внутренний
+      # порт менять не нужно.
+      - "${ALATYR_API_PORT:-8090}:8090"
     depends_on:
       postgres:
         condition: service_healthy
@@ -87,7 +91,7 @@ services:
       VITE_KEYCLOAK_REALM: ${KEYCLOAK_REALM}
       VITE_KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID}
     ports:
-      - "3000:8080"
+      - "${ALATYR_UI_PORT:-3000}:8080"
     depends_on:
       alatyr-server:
         condition: service_healthy
