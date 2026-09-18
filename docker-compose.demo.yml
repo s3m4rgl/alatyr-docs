@@ -294,22 +294,14 @@ services:
   # Applies DB migrations on boot and bootstraps the first local admin while the
   # users table is empty.
   server:
-    build:
-      context: ../server
-      dockerfile: Dockerfile.demo
-      # Штамп версии. Без этих аргументов Dockerfile берёт свои значения по
-      # умолчанию (`VERSION_FULL=demo`, `COMMIT=unknown`, `BUILT_AT=unknown`), и
-      # `/api/v1/version` отдаёт их же — то есть установить, КАКАЯ сборка
-      # развёрнута, невозможно (#848). Замерено на трёх независимо собранных
-      # стеках, включая собранный из актуального ствола.
-      #
-      # Значения приходят из окружения, а не из git: у заказчика, поднимающего
-      # стенд из архива, git отсутствует, поэтому штамповать обязаны МЫ при
-      # подготовке поставки — `make demo-stack-build` заполняет их из git.
-      args:
-        VERSION_FULL: ${ALATYR_VERSION_FULL:-demo}
-        COMMIT: ${ALATYR_COMMIT:-unknown}
-        BUILT_AT: ${ALATYR_BUILT_AT:-unknown}
+    # Готовый образ из Docker Hub — демонстрационный стенд поднимается без
+    # исходников и без доступа к внутренним реестрам.
+    #
+    # Штамп версии (какая сборка развёрнута, `/api/v1/version`) приходит внутри
+    # образа: его проставляет конвейер при публикации. Прежде стенд собирался
+    # на месте, и без явных аргументов сборки версия отдавалась как
+    # `demo/unknown/unknown` — установить развёрнутое было нечем (#848).
+    image: ${ALATYR_SERVER_IMAGE:-s3m4rgl/alatyr-server}:${ALATYR_IMAGE_TAG:?задайте ALATYR_IMAGE_TAG — версию поставки; плавающего тега latest у нас нет намеренно}
     container_name: alatyr-demo-server
     # The UI's baked-in nginx.conf proxies /api to the host name `alatyr-server`.
     # Expose that alias so the reverse proxy resolves regardless of service name.
@@ -462,14 +454,7 @@ services:
 
   # ── UI (React, nginx) ───────────────────────────────────────────────────────
   ui:
-    build:
-      context: ../frontend
-      dockerfile: Dockerfile.demo
-      # Тот же штамп для фронта: его Dockerfile ждёт GIT_COMMIT/VERSION_BUILD,
-      # и без аргументов подвал интерфейса показывает заглушку.
-      args:
-        GIT_COMMIT: ${ALATYR_COMMIT:-unknown}
-        VERSION_BUILD: ${ALATYR_VERSION_FULL:-demo}
+    image: ${ALATYR_UI_IMAGE:-s3m4rgl/alatyr-frontend}:${ALATYR_IMAGE_TAG:?задайте ALATYR_IMAGE_TAG — версию поставки; плавающего тега latest у нас нет намеренно}
     container_name: alatyr-demo-ui
     depends_on:
       server:

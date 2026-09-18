@@ -35,10 +35,15 @@ Kubernetes.
 | Vault | PKI: корневой и промежуточный УЦ, выпуск и отзыв; отдельный движок для SSH |
 | Агент | Заводит ключ в железе устройства, формирует заявку, ставит выданный сертификат и профиль сети |
 
-Сервер и веб-интерфейс поставляются образами `dexionius/wifi-certs-server` и
-`dexionius/wifi-certs-frontend`. **Указывайте явный тег версии** — тега `latest`
-у нас нет намеренно: плавающий тег даёт «работает, но не то», и такой отказ
-обнаруживается уже у заказчика.
+Сервер и веб-интерфейс поставляются готовыми образами
+[`s3m4rgl/alatyr-server`](https://hub.docker.com/r/s3m4rgl/alatyr-server) и
+[`s3m4rgl/alatyr-frontend`](https://hub.docker.com/r/s3m4rgl/alatyr-frontend).
+Собирать ничего не нужно — в этом репозитории лежит только развёртывание.
+
+**Тег версии обязателен**, значения по умолчанию у него нет. Тега `latest` мы
+не публикуем намеренно: плавающий тег даёт «работает, но не то», и такой отказ
+обнаруживается уже у вас. Версию берите из релизных заметок и фиксируйте в
+`.env` — `ALATYR_IMAGE_TAG`.
 
 ## Быстрый старт
 
@@ -47,7 +52,7 @@ Kubernetes.
 ```bash
 git clone https://github.com/s3m4rgl/alatyr-docs.git
 cd alatyr-docs
-cp .env.example .env          # задайте пароли, адрес Vault, домен
+cp .env.example .env          # задайте ALATYR_IMAGE_TAG, пароли, адрес Vault, домен
 docker compose up -d
 ```
 
@@ -65,7 +70,8 @@ docker compose up -d
 ### Demo — посмотреть за одну команду
 
 ```bash
-docker compose -f docker-compose.demo.yml up -d --build
+ALATYR_IMAGE_TAG=<версия из релизных заметок> \
+  docker compose -f docker-compose.demo.yml up -d
 ```
 
 Откройте `http://localhost:13000`, вход — `admin@wifi.local` и пароль из файла.

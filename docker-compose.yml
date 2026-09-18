@@ -16,9 +16,15 @@ services:
     restart: unless-stopped
 
   alatyr-server:
-    build:
-      context: ../server
-      dockerfile: Dockerfile
+    # Готовый образ из Docker Hub. Сборки из исходников здесь нет и не будет:
+    # в этом репозитории лежит только развёртывание, исходников у вас нет.
+    #
+    # Тег обязателен и намеренно не имеет значения по умолчанию. Плавающий тег
+    # однажды отдал сборку месячной давности, и обнаружилось это не отказом, а
+    # тем, что в продукте не оказалось нужной возможности — худший вид сбоя,
+    # потому что он находится уже у вас. Версию поставки берите из релизных
+    # заметок и фиксируйте в .env.
+    image: ${ALATYR_SERVER_IMAGE:-s3m4rgl/alatyr-server}:${ALATYR_IMAGE_TAG:?задайте ALATYR_IMAGE_TAG — версию поставки; плавающего тега latest у нас нет намеренно}
     environment:
       # Legacy names (SERVER_PORT, DB_URL, ..., and mid-tier WIFI_CERT_*) still
       # accepted; canonical ALATYR_* preferred.
@@ -75,9 +81,7 @@ services:
     restart: unless-stopped
 
   alatyr-ui:
-    build:
-      context: ../frontend
-      dockerfile: Dockerfile
+    image: ${ALATYR_UI_IMAGE:-s3m4rgl/alatyr-frontend}:${ALATYR_IMAGE_TAG:?задайте ALATYR_IMAGE_TAG — версию поставки; плавающего тега latest у нас нет намеренно}
     environment:
       VITE_KEYCLOAK_URL: ${KEYCLOAK_URL}
       VITE_KEYCLOAK_REALM: ${KEYCLOAK_REALM}

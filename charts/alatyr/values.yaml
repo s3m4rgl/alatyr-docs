@@ -16,9 +16,13 @@
 namespace: alatyr
 
 image:
-  # Образы собираются и загружаются в ВАШ registry; публичных нет.
-  server: ""      # например registry.corp.example/alatyr/server
-  frontend: ""    # например registry.corp.example/alatyr/frontend
+  # Публичные образы в Docker Hub. Если в вашем контуре нет выхода наружу —
+  # перелейте их в свой реестр (skopeo copy) и подставьте его адрес сюда.
+  server: s3m4rgl/alatyr-server
+  frontend: s3m4rgl/alatyr-frontend
+  # Тег обязателен: плавающего `latest` у нас нет намеренно — он однажды отдал
+  # сборку месячной давности, и обнаружилось это уже у заказчика. Версию берите
+  # из релизных заметок.
   tag: ""
   pullPolicy: IfNotPresent
   pullSecrets: []
