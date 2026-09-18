@@ -109,6 +109,7 @@ helm upgrade --install alatyr charts/alatyr \
 | [`charts/alatyr/`](charts/alatyr/) | Helm-чарт для Kubernetes |
 | [`docker-compose.yml`](docker-compose.yml) | Рабочее развёртывание через Docker Compose |
 | [`docker-compose.demo.yml`](docker-compose.demo.yml) | Демонстрационный стенд одной командой |
+| [`docker-compose.dev.yml`](docker-compose.dev.yml) | Инфраструктура отдельно: PostgreSQL, Vault в dev-режиме, Keycloak; сервер и интерфейс — профилем `app` |
 | [`.env.example`](.env.example) | Все переменные окружения сервера с пояснениями |
 | [`mkdocs.yml`](mkdocs.yml) | Навигация и оформление сайта |
 
