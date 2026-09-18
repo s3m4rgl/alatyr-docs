@@ -40,11 +40,53 @@ Kubernetes.
 у нас нет намеренно: плавающий тег даёт «работает, но не то», и такой отказ
 обнаруживается уже у заказчика.
 
+## Быстрый старт
+
+### Docker Compose — для ознакомления
+
+```bash
+git clone https://github.com/s3m4rgl/alatyr-docs.git
+cd alatyr-docs
+cp .env.example .env          # задайте пароли, адрес Vault, домен
+docker compose up -d
+```
+
+Откройте `http://localhost:3000`. Обязательные значения в `.env` — строка
+подключения к PostgreSQL, адрес и учётные данные Vault, пароль первого
+администратора. Пустых умолчаний у них нет намеренно: сервер откажется
+стартовать, а не поднимется с известным всем паролем.
+
+!!! Секреты файлами
+
+    Любое имя из `.env.example` принимает форму `<ИМЯ>_FILE` — значение будет
+    прочитано из файла. Для секретов это предпочтительнее: переменная окружения
+    видна в `docker inspect` и в `/proc/<pid>/environ`, файл — нет.
+
+### Kubernetes — Helm-чарт
+
+```bash
+helm upgrade --install alatyr charts/alatyr \
+  --namespace alatyr --create-namespace \
+  --set image.tag=<версия> \
+  --values my-values.yaml
+```
+
+Чарт разворачивает сервер, веб-интерфейс и PostgreSQL; Vault подключается как
+внешний. Обязательные значения перечислены в
+[`charts/alatyr/values.yaml`](charts/alatyr/values.yaml), а их отсутствие
+останавливает установку с внятным сообщением, а не падает позже.
+
+Требования к машине, портам и окружению — [Установка](docs/installation.md).
+Сколько ресурсов заложить под парк — [Расчёт ресурсов](docs/sizing.md).
+
 ## Состав репозитория
 
 | Путь | Назначение |
 | --- | --- |
 | [`docs/`](docs/) | Исходники документации (MkDocs Material), публикуются на GitHub Pages |
+| [`charts/alatyr/`](charts/alatyr/) | Helm-чарт для Kubernetes |
+| [`docker-compose.yml`](docker-compose.yml) | Развёртывание через Docker Compose |
+| [`.env.example`](.env.example) | Все переменные окружения сервера с пояснениями |
 | [`mkdocs.yml`](mkdocs.yml) | Навигация и оформление сайта |
 
 ## Сборка документации локально

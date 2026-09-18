@@ -1,0 +1,9 @@
+apiVersion: v2
+name: alatyr
+description: >-
+  Alatyr — выдача клиентских сертификатов (Wi-Fi 802.1X, mTLS, SSH, kubectl).
+  Продовый чарт: внешний Vault, секреты только ссылкой на Secret, никакой
+  очистки данных по расписанию. Демонстрационный вариант — чарт alatyr-demo.
+type: application
+version: 1.0.0
+appVersion: "latest"

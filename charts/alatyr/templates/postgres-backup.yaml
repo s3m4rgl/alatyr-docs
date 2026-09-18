@@ -1,0 +1,87 @@
+{{- if and (eq .Values.postgres.mode "embedded") .Values.postgres.backup.enabled }}
+{{/*
+Резервная копия однорепличной базы.
+
+Она здесь не «для полноты», а потому, что установка с одним подом БЕЗ копии —
+это отложенная потеря данных: PVC теряется вместе с нодой, а восстанавливать
+нечем. Проверка в _validate.tpl не даёт выключить копию, не выбрав внешнюю
+базу.
+
+Чего эта задача НЕ делает: не проверяет, что копия ВОССТАНАВЛИВАЕТСЯ. Копия,
+которую ни разу не разворачивали, — предположение, а не копия; разворачивать
+её на запасном пространстве имён должен тот, кто отвечает за установку.
+*/}}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "chart.fullname" . }}-postgres-backup
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "chart.labels" . | nindent 4 }}
+spec:
+  accessModes: ["ReadWriteOnce"]
+  {{- if .Values.postgres.backup.storage.storageClassName }}
+  storageClassName: {{ .Values.postgres.backup.storage.storageClassName }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.postgres.backup.storage.size }}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "chart.fullname" . }}-postgres-backup
+  namespace: {{ .Values.namespace }}
+  labels:
+    app.kubernetes.io/component: postgres-backup
+    {{- include "chart.labels" . | nindent 4 }}
+spec:
+  schedule: {{ .Values.postgres.backup.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: pgdump
+              image: {{ .Values.postgres.image }}
+              env:
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.secrets.existingSecret }}
+                      key: postgres-password
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -eu
+                  STAMP=$(date -u +%Y%m%dT%H%M%SZ)
+                  OUT=/backup/alatyr-$STAMP.sql.gz
+                  # Пишем во временный файл и переименовываем: оборванная
+                  # задача иначе оставляет обрезанный файл, который выглядит
+                  # копией и ею не является.
+                  pg_dump -h {{ include "chart.fullname" . }}-postgres \
+                          -U {{ .Values.postgres.user }} \
+                          -d {{ .Values.postgres.db }} \
+                    | gzip > "$OUT.partial"
+                  # Пустой или битый архив не подменяет собой ничего.
+                  gzip -t "$OUT.partial"
+                  mv "$OUT.partial" "$OUT"
+                  echo "копия готова: $OUT ($(stat -c %s "$OUT") байт)"
+                  # Чистка старых. -mtime считает СУТКАМИ, поэтому keepDays
+                  # это именно дни, а не запусков.
+                  find /backup -name 'alatyr-*.sql.gz' -mtime +{{ .Values.postgres.backup.keepDays }} -print -delete
+                  # Осиротевшие .partial от прерванных задач тоже убираем.
+                  find /backup -name 'alatyr-*.partial' -mtime +1 -print -delete
+              volumeMounts:
+                - name: backup
+                  mountPath: /backup
+          volumes:
+            - name: backup
+              persistentVolumeClaim:
+                claimName: {{ include "chart.fullname" . }}-postgres-backup
+{{- end }}

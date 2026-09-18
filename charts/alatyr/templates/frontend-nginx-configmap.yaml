@@ -1,0 +1,39 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "chart.fullname" . }}-frontend-nginx
+  namespace: {{ .Values.namespace }}
+  labels:
+    app.kubernetes.io/component: frontend
+    {{- include "chart.labels" . | nindent 4 }}
+data:
+  default.conf: |
+    server {
+        listen 8080;
+        root /usr/share/nginx/html;
+        index index.html;
+
+        gzip on;
+        gzip_types text/plain text/css application/json application/javascript text/xml application/xml text/javascript;
+
+        location /api/ {
+            proxy_pass http://alatyr-server:8090;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+        }
+
+        location /swagger/ {
+            proxy_pass http://alatyr-server:8090;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+        }
+
+        location / {
+            try_files $uri $uri/ /index.html;
+        }
+
+        location ~* \.(js|css|png|jpg|ico|svg)$ {
+            expires 1y;
+            add_header Cache-Control "public, immutable";
+        }
+    }

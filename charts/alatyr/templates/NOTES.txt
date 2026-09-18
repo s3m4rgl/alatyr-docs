@@ -1,0 +1,57 @@
+Alatyr {{ .Chart.AppVersion }} установлен в пространство имён {{ .Values.namespace }}.
+
+ЧТО СДЕЛАТЬ СРАЗУ — без этих трёх шагов установка работать не будет.
+
+1. НАПРАВИТЬ ЦЕЛИ В ИХ ИЗДАТЕЛЕЙ.
+   Чарт задаёт только запасной путь (VAULT_PKI_MOUNT={{ .Values.vault.pkiMount }}).
+   Какая цель куда ходит — запись в базе, и её делают в админке:
+
+     wifi       -> pki_wifi       / alatyr
+     user_mtls  -> pki_user_mtls  / user-mtls
+     k8s        -> pki_k8s        / k8s
+     ssh        -> ssh-client-signer / ssh-user
+
+   Без этого заявки уедут в vault_failed.
+
+   ВАЖНО: у wifi и user_mtls ОБЯЗАН быть РАЗНЫЙ издатель. Оба сертификата
+   несут одинаковый CN, и приёмник различает их только по издателю — иначе
+   машинный сертификат, подписываемый молча, заменяет пользовательский,
+   который выдаётся под PIN или биометрию. Замеры: docs/MTLS-RELYING-PARTY.md.
+
+2. СМЕНИТЬ ПАРОЛЬ ПЕРВОГО АДМИНИСТРАТОРА и убрать ключи local-admin-* из
+   Secret: они нужны только на первый запуск, пока таблица пользователей пуста.
+
+3. ПРОВЕРИТЬ, ЧТО СЕРВЕР ДОШЁЛ ДО VAULT:
+
+     kubectl -n {{ .Values.namespace }} logs deploy/{{ include "chart.fullname" . }}-server | grep -i vault
+
+   Строка «Vault auth is not configured» означает, что ключи в Secret названы
+   не так, как ждёт чарт (vault-role-id / vault-secret-id при auth=approle).
+
+{{- if eq .Values.postgres.mode "embedded" }}
+
+ВНИМАНИЕ: postgres.mode=embedded — это ОДИН под и один PVC. Не
+отказоустойчиво; при потере ноды база уезжает вместе с ней.
+{{- if .Values.postgres.backup.enabled }}
+Копия снимается по расписанию {{ .Values.postgres.backup.schedule }} и хранится
+{{ .Values.postgres.backup.keepDays }} дней. Разверните её хотя бы раз на
+запасном пространстве имён: копия, которую не восстанавливали, — это
+предположение, а не копия.
+{{- end }}
+{{- end }}
+
+ПРО `helm install --wait`: если класс хранения работает в режиме
+WaitForFirstConsumer (так устроен local-path в k3s), PVC под резервные копии
+остаётся Pending до ПЕРВОГО запуска задачи, и `--wait` ждёт его до истечения
+времени, хотя релиз развёрнут правильно. Проверено на k3s. Либо не задавайте
+`--wait`, либо запустите копию сразу:
+
+  kubectl -n {{ .Values.namespace }} create job первая-копия \
+      --from=cronjob/{{ include "chart.fullname" . }}-postgres-backup
+
+{{- if gt (int .Values.server.replicas) 1 }}
+
+ВНИМАНИЕ: реплик сервера {{ .Values.server.replicas }}. Поллинг SCEP рассчитан
+на одну реплику, ограничение частоты между репликами не общее — вы это
+признали параметром acknowledgeMultiReplicaLimits.
+{{- end }}
