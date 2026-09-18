@@ -419,12 +419,21 @@ services:
         condition: service_healthy
     restart: "no"
     volumes:
-      - ../scripts/seed-dev-data.sql:/seed.sql:ro
+      - ./seed/demo-data.sql:/seed.sql:ro
     entrypoint:
       - /bin/sh
       - -c
       - |
+        # `set -e` здесь не украшение. Без него оболочка идёт дальше после
+        # падения psql и печатает «данные засеяны», хотя не засеяно ничего:
+        # стенд поднимается ПУСТЫМ и рапортует об успехе. Замерено 2026-09-18 —
+        # файл сева не смонтировался, psql ответил «Is a directory», а
+        # контейнер всё равно отчитался и вышел с нулём.
+        set -e
         echo "Seeding demo data..."
+        # Проверка, что это именно ФАЙЛ: при неверном пути Docker молча создаёт
+        # на его месте каталог, и отказ выглядит как проблема psql.
+        [ -f /seed.sql ] || { echo "seed: /seed.sql не файл — проверьте монтирование ./seed/demo-data.sql" >&2; exit 1; }
         psql "postgres://wifi_cert:wifi_cert_dev@postgres:5432/alatyr?sslmode=disable" \
           -v ON_ERROR_STOP=1 -f /seed.sql
         echo "Demo data seeded."
