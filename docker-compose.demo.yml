@@ -1,0 +1,489 @@
+# ВНИМАНИЕ: это ДЕМОНСТРАЦИОННЫЙ стек.
+#
+# Учётные данные ниже заданы прямо в файле намеренно: стенд должен подниматься
+# одной командой и без настройки. Ровно поэтому он НЕ ГОДИТСЯ для боевой
+# установки — пароль администратора, пароль базы и токен Vault здесь известны
+# каждому, кто открыл этот файл.
+#
+# Для боевой установки берите `docker-compose.yml` рядом: он целиком задаётся
+# переменными из `.env`, и без заданных значений сервер откажется стартовать.
+#
+# ============================================================================
+#  Alatyr — TURNKEY DEMO STACK   (one command, nothing to configure)
+# ============================================================================
+#
+#   make demo-up
+#
+# ПОЧЕМУ ЧЕРЕЗ `make`, А НЕ ГОЛЫМ `docker compose`.
+# Штамп сборки (версия, коммит, дата) не выводится из содержимого этого файла:
+# `docker compose` не умеет исполнять `git describe`, а значения ARG берутся из
+# окружения. Их подставляет цель `demo-up`. Голая команда
+#
+#   docker compose -f docker/docker-compose.demo.yml up --build
+#
+# тоже поднимет стенд, но он будет отвечать `version=demo, commit=unknown` на
+# `/api/v1/version` — и на вопрос «какая у вас сборка» ответить будет нечем.
+# Образы из реестра этим не страдают: их штампует конвейер публикации
+# (`ci/gitlab-dockerhub.yml`, `--build-arg VERSION_FULL/COMMIT/BUILT_AT`).
+#
+#   Then open  http://localhost:13000  and log in with:
+#       email:    admin@wifi.local
+#       password: Admin1234!
+#
+# Brings up, IN ORDER (each step waits for the previous to be HEALTHY):
+#   postgres → vault → vault-init (PKI) → server (migrates + seeds first admin)
+#            → seed (fake data) → ui
+#
+# Everything is enabled out of the box: local email+password auth, outgoing
+# webhooks, and fake demo data. No Keycloak, no Vault token juggling.
+#
+# Only two host ports are published (everything else talks over the internal
+# compose network, so nothing else on your machine can clash with it):
+#   UI   → http://localhost:13000
+#   API  → http://localhost:18090
+#
+# ⚠️  DEV/DEMO ONLY. The secrets below are hard-coded on purpose so the stack is
+#     reproducible with zero setup. NEVER use these values in production.
+# ============================================================================
+
+name: alatyr-demo
+
+services:
+  # ── PostgreSQL ──────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:15
+    container_name: alatyr-demo-postgres
+    environment:
+      POSTGRES_DB: alatyr
+      POSTGRES_USER: wifi_cert
+      POSTGRES_PASSWORD: wifi_cert_dev
+    # No host port — the server reaches Postgres over the compose network.
+    # (Avoids clashing with anything already bound on the host.)
+    volumes:
+      - demo_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wifi_cert -d alatyr"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ── Vault (файловое хранилище, переживает перезапуск) ───────────────────────
+  #
+  # Было `vault server -dev`, у которого хранилище по построению `inmem`
+  # (замер 2026-09-05: `Storage Type inmem`). Любая остановка контейнера
+  # уносила корень PKI вместе со ВСЕМИ выданными сертификатами — и уносила
+  # МОЛЧА: контейнеры поднимаются, админка отвечает, устройства числятся
+  # зарегистрированными, а проверить их сертификаты больше нечем (#520).
+  #
+  # На соседнем стенде это выглядело так: приёмник mTLS отвечает 400,
+  # apiserver 401, клиентский сертификат «выписан не тем УЦ» — при полностью
+  # исправных службах. Диагноз в такой картине занимает часы, потому что
+  # ломается не то, что показывает симптом.
+  #
+  # Инициализация и распечатывание живут В САМОМ контейнере, а не отдельной
+  # одноразовой службой. Причина ровно та же, что у исходного дефекта: после
+  # `docker restart vault` отдельная служба не запустится заново, Vault
+  # останется ЗАПЕЧАТАННЫМ, и картина снова будет «всё поднято, ничего не
+  # работает». Здесь же он распечатывает себя при каждом старте.
+  vault:
+    image: hashicorp/vault:1.17
+    container_name: alatyr-demo-vault
+    environment:
+      VAULT_ADDR: "http://127.0.0.1:8200"
+    volumes:
+      - demo_vault_data:/vault/data
+    cap_add:
+      - IPC_LOCK
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        set -e
+        mkdir -p /vault/data
+        cat >/tmp/vault.hcl <<'HCL'
+        storage "file" { path = "/vault/data" }
+        listener "tcp" {
+          address     = "0.0.0.0:8200"
+          tls_disable = 1
+        }
+        disable_mlock = true
+        ui            = false
+        api_addr      = "http://vault:8200"
+        HCL
+
+        vault server -config=/tmp/vault.hcl &
+        SERVER_PID=$$!
+
+        # Ждём, пока API ответит. `vault status` возвращает 2 на запечатанном
+        # и 0 на распечатанном — оба означают «поднялся», поэтому смотрим на
+        # факт ответа, а не на код.
+        i=0
+        until vault status >/dev/null 2>&1 || [ "$$?" = "2" ]; do
+          i=$$((i+1)); [ "$$i" -gt 60 ] && { echo "Vault не поднялся"; exit 1; }
+          sleep 1
+        done
+
+        INIT=/vault/data/init.json
+        if ! vault status -format=json | grep -q '"initialized": *true'; then
+          echo "[vault] хранилище пустое — инициализирую"
+          # Вывод БЕЗ -format=json: JSON здесь многострочный, а в образе нет
+          # ни jq, ни python — построчный разбор `sed` его не берёт, и первая
+          # версия этой правки честно отказала «не разобрал init.json».
+          # Обычный вывод строчный и разбирается awk без инструментов.
+          vault operator init -key-shares=1 -key-threshold=1 > "$$INIT"
+          chmod 600 "$$INIT"
+        else
+          echo "[vault] уже инициализирован — НЕ трогаю"
+        fi
+
+        # Отсутствие ключа при инициализированном хранилище — тупик, и о нём
+        # надо сказать вслух: распечатать нечем, а молчание выглядело бы как
+        # исправная работа до первой выдачи.
+        [ -s "$$INIT" ] || { echo "[vault] ОТКАЗ: $$INIT пуст, а хранилище инициализировано — ключ утерян"; exit 1; }
+
+        KEY=$$(awk '/^Unseal Key 1:/ {print $$4}' "$$INIT")
+        ROOT=$$(awk '/^Initial Root Token:/ {print $$4}' "$$INIT")
+        [ -n "$$KEY" ] && [ -n "$$ROOT" ] || { echo "[vault] ОТКАЗ: не разобрал $$INIT"; exit 1; }
+
+        if vault status -format=json | grep -q '"sealed": *true'; then
+          echo "[vault] распечатываю"
+          vault operator unseal "$$KEY" >/dev/null
+        fi
+
+        # Фиксированный токен стенда: на нём завязан весь остальной стек, и
+        # менять его значило бы править половину файлов ради смены хранилища.
+        if ! VAULT_TOKEN="dev-root-token" vault token lookup >/dev/null 2>&1; then
+          echo "[vault] завожу фиксированный токен стенда"
+          VAULT_TOKEN="$$ROOT" vault token create -id=dev-root-token -policy=root -ttl=0 >/dev/null
+        fi
+
+        echo "[vault] готов: хранилище файловое, корень переживёт перезапуск"
+        wait $$SERVER_PID
+    healthcheck:
+      # `vault status` возвращает 0 только у РАСПЕЧАТАННОГО Vault — то есть
+      # проверка означает «можно работать», а не «процесс жив».
+      test: ["CMD", "vault", "status"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # ── Vault PKI init (one-shot) ───────────────────────────────────────────────
+  # Enables the PKI engine + root CA + the signing roles the server needs for
+  # EVERY cert-issuing purpose the seed enables: alatyr (wifi), user-mtls,
+  # k8s-client (k8s), plus the Vault SSH engine (ssh-client-signer/ssh-user)
+  # for purpose='ssh'. Runs once, then exits 0. The server waits for this to
+  # complete successfully before starting.
+  vault-init:
+    image: hashicorp/vault:1.17
+    container_name: alatyr-demo-vault-init
+    depends_on:
+      vault:
+        condition: service_healthy
+    environment:
+      VAULT_ADDR: "http://vault:8200"
+      VAULT_TOKEN: "dev-root-token"
+    restart: "no"
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        set -e
+        echo "Configuring Vault PKI (idempotent)..."
+        vault secrets enable pki 2>/dev/null || echo "  pki already enabled"
+        vault secrets tune -max-lease-ttl=87600h pki
+        vault write -field=certificate pki/root/generate/internal \
+          common_name="Alatyr Root CA" ttl=87600h >/dev/null 2>&1 \
+          || echo "  root CA already present"
+        # АДРЕС СПИСКА ОТЗЫВА ВИДЯТ КЛИЕНТЫ, А НЕ КОНТЕЙНЕРЫ.
+        #
+        # Здесь стояло `http://vault:8200` — имя службы compose. Внутри сети
+        # оно разрешается, снаружи НЕ разрешается ни у кого: замер на VM 203
+        # 2026-09-11 — `vault НЕ РАЗРЕШАЕТСЯ`, а следом Windows отказывается
+        # отдавать сертификат потребителю, потому что отозванность проверить
+        # нечем (`CERT_TRUST_REVOCATION_STATUS_UNKNOWN`). Наружу это выходит
+        # словами про УСТРОЙСТВО, по которым причину не угадать.
+        #
+        # Адрес вынесен в переменную, и умолчание оставлено ПРЕЖНИМ намеренно:
+        # правильное значение зависит от того, как развёрнут стенд, и
+        # угадывать его здесь нельзя. Задайте `ALATYR_PKI_PUBLIC_ADDR` тем
+        # адресом, по которому Vault виден КЛИЕНТАМ.
+        #
+        # ВНИМАНИЕ: уже выданные сертификаты несут прежний адрес ВНУТРИ себя.
+        # Смена настройки их не чинит — нужен перевыпуск.
+        PKI_ADDR="${ALATYR_PKI_PUBLIC_ADDR:-http://vault:8200}"
+        echo "  CDP: $$PKI_ADDR/v1/pki/crl"
+        case "$$PKI_ADDR" in
+          http://vault:*|https://vault:*)
+            echo "  ВНИМАНИЕ: адрес списка отзыва — имя службы compose." >&2
+            echo "  Клиенты вне сети его не разрешат, и выданные этим корнем" >&2
+            echo "  сертификаты они использовать не смогут (#728)." >&2
+            ;;
+        esac
+        vault write pki/config/urls \
+          issuing_certificates="$$PKI_ADDR/v1/pki/ca" \
+          crl_distribution_points="$$PKI_ADDR/v1/pki/crl" >/dev/null
+        vault write pki/roles/alatyr \
+          allowed_domains="wifi.local" \
+          allow_any_name=true \
+          max_ttl=26280h \
+          key_type=any \
+          enforce_hostnames=false \
+          client_flag=true \
+          server_flag=false \
+          allowed_serial_numbers="*" \
+          allowed_uri_sans="urn:device-serial:*" >/dev/null
+
+        # user_mtls — отдельная роль: сертификат утверждает личность ЧЕЛОВЕКА,
+        # а не машины, поэтому без device-serial URI SAN и с TTL год вместо
+        # трёх лет (см. scripts/vault-dev-setup.sh). Без неё заявка user_mtls
+        # уезжает в vault_failed с "unknown role: user-mtls".
+        vault write pki/roles/user-mtls \
+          allowed_domains="wifi.local" \
+          allow_any_name=true \
+          max_ttl=8760h \
+          key_type=any \
+          enforce_hostnames=false \
+          client_flag=true \
+          server_flag=false \
+          email_protection_flag=false \
+          require_cn=true \
+          use_csr_common_name=true \
+          use_csr_sans=true \
+          key_usage="DigitalSignature,KeyEncipherment" >/dev/null
+
+        # k8s. Имя роли — k8s-client, в точности как в seed-dev-data.sql
+        # (issuer_profiles.vault_role). Не k8s, как в vault-dev-setup.sh: там
+        # дрейф имени, а demo-стек сверяется с seed.
+        vault write pki/roles/k8s-client \
+          allowed_domains="wifi.local" \
+          allow_any_name=true \
+          max_ttl=12h \
+          key_type=any \
+          enforce_hostnames=false \
+          client_flag=true \
+          server_flag=false \
+          require_cn=true \
+          use_csr_common_name=true \
+          use_csr_sans=true \
+          key_usage="DigitalSignature,KeyEncipherment" >/dev/null
+
+        # Движок Vault SSH — подписывает ПУБЛИЧНЫЙ КЛЮЧ для цели `ssh`
+        # (режим A, сертификат). Отдельный движок, а не роль в pki; без него
+        # сервер отвечает "issuer_not_configured" (см. vault-dev-setup.sh).
+        echo "Configuring Vault SSH engine..."
+        vault secrets enable -path=ssh-client-signer ssh 2>/dev/null \
+          || echo "  ssh-client-signer already enabled"
+        vault write ssh-client-signer/config/ca generate_signing_key=true \
+          >/dev/null 2>&1 || echo "  SSH CA already present"
+        # default_extensions — map-поле, и `vault write key=value` в Vault 1.17
+        # НЕ парсит его как JSON (валится "expected a map, got 'string'"),
+        # поэтому пишем роли через JSON на stdin: `vault write <path> -`.
+        #
+        # allowed_users="*" здесь НЕ дыра: роль Vault не граница безопасности.
+        # Настоящий allowlist — issuer_profiles.backend_config.allowed_principals
+        # на сервере (fail-closed: пустой список = никого не выпускать), он
+        # enforced на submit (/enroll/ssh → 403) и на approve (approve_ssh.go),
+        # ДО обращения к Vault. Vault лишь подписывает principal, который сервер
+        # уже сверил. Тот же паттерн и обоснование — scripts/vault-dev-setup.sh.
+        printf '%s' '{"algorithm_signer":"rsa-sha2-256","allow_user_certificates":true,"allowed_users":"*","default_user":"alatyr","key_type":"ca","ttl":"24h","default_extensions":{"permit-pty":""}}' \
+          | vault write ssh-client-signer/roles/ssh-user - >/dev/null
+        echo "Vault PKI + SSH engine ready."
+
+  # ── Server (Go API) ─────────────────────────────────────────────────────────
+  # Builds with the PUBLIC-image Dockerfile.demo (no harbor access needed).
+  # Applies DB migrations on boot and bootstraps the first local admin while the
+  # users table is empty.
+  server:
+    build:
+      context: ../server
+      dockerfile: Dockerfile.demo
+      # Штамп версии. Без этих аргументов Dockerfile берёт свои значения по
+      # умолчанию (`VERSION_FULL=demo`, `COMMIT=unknown`, `BUILT_AT=unknown`), и
+      # `/api/v1/version` отдаёт их же — то есть установить, КАКАЯ сборка
+      # развёрнута, невозможно (#848). Замерено на трёх независимо собранных
+      # стеках, включая собранный из актуального ствола.
+      #
+      # Значения приходят из окружения, а не из git: у заказчика, поднимающего
+      # стенд из архива, git отсутствует, поэтому штамповать обязаны МЫ при
+      # подготовке поставки — `make demo-stack-build` заполняет их из git.
+      args:
+        VERSION_FULL: ${ALATYR_VERSION_FULL:-demo}
+        COMMIT: ${ALATYR_COMMIT:-unknown}
+        BUILT_AT: ${ALATYR_BUILT_AT:-unknown}
+    container_name: alatyr-demo-server
+    # The UI's baked-in nginx.conf proxies /api to the host name `alatyr-server`.
+    # Expose that alias so the reverse proxy resolves regardless of service name.
+    networks:
+      default:
+        aliases:
+          - alatyr-server
+    depends_on:
+      postgres:
+        condition: service_healthy
+      vault-init:
+        condition: service_completed_successfully
+    environment:
+      ALATYR_SERVER_PORT: "8090"
+      ALATYR_DB_URL: "postgres://wifi_cert:wifi_cert_dev@postgres:5432/alatyr?sslmode=disable"
+      ALATYR_LOG_LEVEL: "info"
+      ALATYR_DEV_MODE: "true"
+      # Разрешённые источники запросов.
+      #
+      # Браузер шлёт заголовок `Origin`, и сервер отвечает 403, если адреса
+      # в списке нет. Пока список состоял ровно из `localhost`, демо-стенд,
+      # открытый по адресу машины (а иначе к нему не подключиться ни с
+      # какого другого компьютера), отвергал ВСЯКИЙ вход — и морда называла
+      # это «неверным паролем». Замер 2026-09-03: пароль был правильный,
+      # поиски заняли полчаса.
+      #
+      # Поэтому адрес задаётся снаружи: `ALATYR_DEMO_ORIGINS` дописывается к
+      # localhost-адресам, которые нужны при работе через туннель. Пример:
+      #   ALATYR_DEMO_ORIGINS=http://stand.example.local:13000 docker compose -f docker-compose.demo.yml up -d
+      #
+      # `curl` заголовка `Origin` не шлёт, поэтому проверка стенда curl'ом
+      # эту поломку НЕ воспроизводит — проверять браузером либо
+      # `curl -H "Origin: <адрес морды>"`.
+      ALATYR_CORS_ORIGINS: "http://localhost:13000,http://localhost:3000${ALATYR_DEMO_ORIGINS:+,${ALATYR_DEMO_ORIGINS}}"
+
+      # ── Local email+password auth (the demo login path) ──
+      #
+      # ALATYR_LOCAL_JWT_SECRET здесь НЕТ намеренно.
+      # Этим секретом проверяется подпись сессионных токенов, поэтому значение,
+      # лежащее в поставке, одинаково у всех установок: знающий его выпускает
+      # себе токен администратора, НЕ ЗНАЯ ПАРОЛЯ, и смена пароля этого не
+      # закрывает. Незаданный секрет сервер генерирует сам при первом старте и
+      # сохраняет, так что стенд по-прежнему поднимается одной командой, но
+      # секрет у каждой установки свой. Своё значение можно задать переменной
+      # (от 32 байт); прежнее опубликованное сервер теперь отвергает на старте.
+      ALATYR_LOCAL_AUTH_ENABLED: "true"
+      ALATYR_LOCAL_ADMIN_EMAIL: "admin@wifi.local"
+      ALATYR_LOCAL_ADMIN_PASSWORD: "Admin1234!"
+
+      # ── Outgoing webhooks (enabled so the feature is visible) ──
+      ALATYR_WEBHOOKS_ENABLED: "true"
+      # 64 hex chars = 32 bytes. DEMO ONLY.
+      ALATYR_WEBHOOK_ENC_KEY: "1111111111111111111111111111111111111111111111111111111111111111"
+
+      # ── On-demand device-log collection (default off -- see config.go's
+      #    RemoteLogsEnabled doc comment) -- enabled so the feature is visible.
+      ALATYR_REMOTE_LOGS_ENABLED: "true"
+
+      # ── Apple App Attest ──
+      # The demo stack configures it so the macOS path is exercisable at all:
+      # with ALATYR_APP_ATTEST_APP_ID unset the /enroll/app-attest routes are
+      # not registered, and a reviewer would see a Settings ladder that can
+      # never take effect. This is our real Team ID + bundle identifier -- an
+      # attestation only verifies against the app id it was minted for, so a
+      # placeholder here would fail every real device.
+      #
+      # Environment must MATCH what the agent binary is signed with
+      # (com.apple.developer.devicecheck.appattest-environment). A mismatch is
+      # caught by the aaguid check and reported as a verification failure --
+      # deliberately, since a development attestation comes from a build any
+      # developer can run on any device.
+      #
+      # appattestdevelop here because the demo/lab agent is a locally
+      # Xcode-signed build, and Apple only issues attestations for such a
+      # build in the development environment (scripts/sign-agent.sh defaults
+      # ALATYR_APPATTEST_ENV to "development" for exactly that reason). A
+      # PRODUCTION deployment must be "appattest" and must be fed a
+      # notarized/App Store build -- accepting a development attestation in
+      # production accepts an app that never went through Apple's release
+      # path, which is the whole reason this is a separate value at all.
+      ALATYR_APP_ATTEST_APP_ID: "8L86QM3JUA.com.semargl.alatyr.agent"
+      ALATYR_APP_ATTEST_ENVIRONMENT: "appattestdevelop"
+
+      # ── Vault PKI (root dev token; vault-init created the engine+role) ──
+      VAULT_ADDR: "http://vault:8200"
+      VAULT_TOKEN: "dev-root-token"
+      VAULT_PKI_MOUNT: "pki"
+      VAULT_PKI_ROLE: "alatyr"
+      VAULT_CERT_TTL_HOURS: "26280"
+
+      # Certificate issuer (default: vault). To use an external SCEP CA instead:
+      # ALATYR_ISSUER: "scep"
+      # ALATYR_SCEP_URL: "http://your-scep-ca/scep"
+      # ALATYR_SCEP_CHALLENGE: "<challenge-password>"
+      # ALATYR_SCEP_CA_FINGERPRINT: "<sha256-hex-of-CA-cert>"
+      # ALATYR_SCEP_ENC_KEY: "<openssl rand -hex 32>"
+    ports:
+      - "18090:8090"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8090/api/v1/version >/dev/null 2>&1 || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  # ── Seed fake data (one-shot) ───────────────────────────────────────────────
+  # Loads the idempotent demo dataset (devices, requests across all statuses,
+  # audit log, SSIDs) AFTER the server has applied migrations. Re-running the
+  # stack is safe — the seed is idempotent.
+  seed:
+    image: postgres:15
+    container_name: alatyr-demo-seed
+    depends_on:
+      server:
+        condition: service_healthy
+    restart: "no"
+    volumes:
+      - ../scripts/seed-dev-data.sql:/seed.sql:ro
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        echo "Seeding demo data..."
+        psql "postgres://wifi_cert:wifi_cert_dev@postgres:5432/alatyr?sslmode=disable" \
+          -v ON_ERROR_STOP=1 -f /seed.sql
+        echo "Demo data seeded."
+
+  # ── Repair the license usage ledger against the seed's cert_requests (one-
+  #    shot) ────────────────────────────────────────────────────────────────
+  # seed-dev-data.sql inserts cert_requests directly via SQL, bypassing the
+  # license usage ledger entirely -- license/status would otherwise report
+  # tamper=true (anchor_absent_with_prior_usage) on first login. See
+  # scripts/seed-dev-data.sql's own header comment and `make reanchor-license`
+  # for the equivalent local-dev step this mirrors.
+  license-reanchor:
+    image: curlimages/curl:8.10.1
+    container_name: alatyr-demo-license-reanchor
+    depends_on:
+      seed:
+        condition: service_completed_successfully
+    restart: "no"
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        echo "Reanchoring license ledger..."
+        curl -sf -X POST "http://alatyr-server:8090/api/v1/license/reanchor" \
+          -H "Authorization: Bearer dev-token" >/dev/null
+        echo "License ledger reanchored."
+
+  # ── UI (React, nginx) ───────────────────────────────────────────────────────
+  ui:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile.demo
+      # Тот же штамп для фронта: его Dockerfile ждёт GIT_COMMIT/VERSION_BUILD,
+      # и без аргументов подвал интерфейса показывает заглушку.
+      args:
+        GIT_COMMIT: ${ALATYR_COMMIT:-unknown}
+        VERSION_BUILD: ${ALATYR_VERSION_FULL:-demo}
+    container_name: alatyr-demo-ui
+    depends_on:
+      server:
+        condition: service_healthy
+    environment:
+      # Keycloak is not used in the demo (local auth only); harmless placeholders.
+      VITE_KEYCLOAK_URL: "http://localhost:8080"
+      VITE_KEYCLOAK_REALM: "alatyr"
+      VITE_KEYCLOAK_CLIENT_ID: "alatyr-portal"
+    ports:
+      - "13000:8080"
+
+volumes:
+  demo_postgres_data:
+  # Данные Vault: корень PKI и всё выданное. Именно этого тома не было,
+  # когда PKI жила в памяти (#520).
+  demo_vault_data:

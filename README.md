@@ -62,6 +62,22 @@ docker compose up -d
     прочитано из файла. Для секретов это предпочтительнее: переменная окружения
     видна в `docker inspect` и в `/proc/<pid>/environ`, файл — нет.
 
+### Demo — посмотреть за одну команду
+
+```bash
+docker compose -f docker-compose.demo.yml up -d --build
+```
+
+Откройте `http://localhost:13000`, вход — `admin@wifi.local` и пароль из файла.
+Стенд поднимает всё сам: PostgreSQL, Vault с настроенным PKI, сервер,
+веб-интерфейс и демонстрационные данные. Настраивать ничего не нужно.
+
+**Это демонстрация, а не установка.** Пароль администратора, пароль базы и
+токен Vault заданы прямо в файле, чтобы стенд поднимался одной командой, —
+значит они известны каждому, кто этот файл открыл. Для рабочей установки берите
+`docker-compose.yml`: он задаётся переменными из `.env`, и без заданных значений
+сервер откажется стартовать.
+
 ### Kubernetes — Helm-чарт
 
 ```bash
@@ -85,7 +101,8 @@ helm upgrade --install alatyr charts/alatyr \
 | --- | --- |
 | [`docs/`](docs/) | Исходники документации (MkDocs Material), публикуются на GitHub Pages |
 | [`charts/alatyr/`](charts/alatyr/) | Helm-чарт для Kubernetes |
-| [`docker-compose.yml`](docker-compose.yml) | Развёртывание через Docker Compose |
+| [`docker-compose.yml`](docker-compose.yml) | Рабочее развёртывание через Docker Compose |
+| [`docker-compose.demo.yml`](docker-compose.demo.yml) | Демонстрационный стенд одной командой |
 | [`.env.example`](.env.example) | Все переменные окружения сервера с пояснениями |
 | [`mkdocs.yml`](mkdocs.yml) | Навигация и оформление сайта |
 
