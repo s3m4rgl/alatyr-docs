@@ -64,6 +64,13 @@ $EDITOR .env                  # без ALATYR_IMAGE_TAG и DB_PASSWORD сост�
 docker compose up -d
 ```
 
+Файлы, которые тут упоминаются, лежат в этом же репозитории — ткните и
+смотрите: [`docker-compose.yml`](https://github.com/s3m4rgl/alatyr-docs/blob/main/docker-compose.yml),
+[`.env.example`](https://github.com/s3m4rgl/alatyr-docs/blob/main/.env.example),
+[`docker-compose.demo.yml`](https://github.com/s3m4rgl/alatyr-docs/blob/main/docker-compose.demo.yml),
+[чарты Helm](https://github.com/s3m4rgl/alatyr-docs/tree/main/charts), [демонстрационные данные](https://github.com/s3m4rgl/alatyr-docs/blob/main/seed/demo-data.sql).
+Агент — в [Releases](https://github.com/s3m4rgl/alatyr-docs/releases).
+
 Откройте `http://localhost:3000`. Обязательные значения в `.env` — строка
 подключения к PostgreSQL, адрес и учётные данные Vault, пароль первого
 администратора. Пустых умолчаний у них нет намеренно: сервер откажется

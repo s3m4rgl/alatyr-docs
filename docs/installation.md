@@ -94,9 +94,9 @@ Kubernetes. Оба варианта описаны ниже.
 
 | Файл | Назначение |
 |---|---|
-| `docker-compose.yml` | «Production-shaped» стек: PostgreSQL + сервер + UI. Ожидает уже настроенный внешний Vault (и, опционально, Keycloak) — сам их не поднимает. |
-| `docker-compose.demo.yml` | Turnkey-демо: одна команда, ничего настраивать не нужно. Поднимает PostgreSQL, Vault (dev-режим), сервер, UI и наполняет БД тестовыми данными. |
-| `docker-compose.dev.yml` | Только dev-инфраструктура (PostgreSQL + Vault dev + Keycloak) — сервер и фронтенд предполагается запускать локально, либо в Docker через `--profile app`. |
+| [`docker-compose.yml`](https://github.com/s3m4rgl/alatyr-docs/blob/main/docker-compose.yml) | «Production-shaped» стек: PostgreSQL + сервер + UI. Ожидает уже настроенный внешний Vault (и, опционально, Keycloak) — сам их не поднимает. |
+| [`docker-compose.demo.yml`](https://github.com/s3m4rgl/alatyr-docs/blob/main/docker-compose.demo.yml) | Turnkey-демо: одна команда, ничего настраивать не нужно. Поднимает PostgreSQL, Vault (dev-режим), сервер, UI и наполняет БД тестовыми данными. |
+| [`docker-compose.dev.yml`](https://github.com/s3m4rgl/alatyr-docs/blob/main/docker-compose.dev.yml) | Только dev-инфраструктура (PostgreSQL + Vault dev + Keycloak) — сервер и фронтенд предполагается запускать локально, либо в Docker через `--profile app`. |
 
 #### `docker-compose.yml` — самостоятельный хостинг
 
@@ -244,6 +244,11 @@ deb/rpm), systemd-юниты `alatyr-agent.timer`/`alatyr-agent.service`,
 
 Статически слинкованный бинарь (кроме опционального модуля `tpm2-pkcs11`),
 поддерживает `amd64`/`arm64`. Два способа установки:
+
+**Где взять пакет.** Пакеты агента для всех платформ лежат в разделе
+[Releases этого репозитория](https://github.com/s3m4rgl/alatyr-docs/releases) — там же, куда вы пришли за документацией.
+Возьмите файл своей платформы из последнего выпуска; номер версии в имени файла
+совпадает с тегом образов сервера и веб-интерфейса.
 
 **deb/rpm** (тянут TPM/PKCS#11-зависимости автоматически через
 `recommends`):
