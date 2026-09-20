@@ -5,7 +5,11 @@ services:
     environment:
       POSTGRES_DB: alatyr
       POSTGRES_USER: wifi_cert
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      # Отказ ОБЪЯСНЯЕТ СЕБЯ, как у ALATYR_IMAGE_TAG выше (#884). Пустое
+      # значение уезжало в postgres, и клиент получал сообщение чужого
+      # образа про суперпользователя вместо нашего про наш же файл:
+      #   Error: Database is uninitialized and superuser password is not specified
+      POSTGRES_PASSWORD: "${DB_PASSWORD:?задайте DB_PASSWORD в .env — пароль пользователя базы, годится любая строка из openssl rand -base64 24}"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:

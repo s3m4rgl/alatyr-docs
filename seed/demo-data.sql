@@ -1,3 +1,16 @@
+-- НАСТОЯЩИЕ CSR, А НЕ ЗАГЛУШКИ (GitLab dexion #890).
+--
+-- Здесь стояло `'-----BEGIN CERTIFICATE REQUEST-----\nSEED-FAKE-CSR\n-----END …'`
+-- в ОБЫЧНЫХ кавычках, то есть `\n` попадал в базу обратным слэшем и буквой, а
+-- не переводом строки. Все 766 заявок были неодобряемы: сервер справедливо
+-- отвечал `csr: invalid PEM`, а четыре ключа — `ssh_public_key: invalid OpenSSH
+-- public key`. Демонстрация, которую README обещает «посмотреть за одну
+-- команду», обрывалась на первом же осмысленном действии — нажатии «Одобрить».
+--
+-- Теперь это настоящий CSR (EC P-256) в escape-строке `E'…'`, где `\n` —
+-- перевод строки. Ключ один на все строки: демонстрационные данные показывают
+-- очередь и интерфейс, а не парк уникальных устройств.
+
 -- seed-dev-data.sql — deterministic, idempotent fake data for local dev / e2e.
 --
 -- Seeds devices, cert_requests (every purpose × every lifecycle status,
@@ -86,9 +99,17 @@ INSERT INTO cert_requests (
 SELECT
     d.id,
     b.status,
-    '-----BEGIN CERTIFICATE REQUEST-----\nSEED-FAKE-CSR\n-----END CERTIFICATE REQUEST-----',
+    E'-----BEGIN CERTIFICATE REQUEST-----\nMIHZMIGAAgEAMB4xHDAaBgNVBAMME2RlbW9AYWxhdHlyLmV4YW1wbGUwWTATBgcq\nhkjOPQIBBggqhkjOPQMBBwNCAATtcCWwl4xtQtA4peRpvIHIrrFdFnlSUaWwqHjn\nhgOYLM3r00LagoRRUTABjTyLIlKxlIXaKaaZGLS0ZtFjiu2AoAAwCgYIKoZIzj0E\nAwIDSAAwRQIhAL2Nv4yu/Z+C14lfGvYG2dCxLTC3JqfEcBiPm6ApzCj7AiBxamD3\nQz7rIoXj4WST0Bq0XrbxIMR5A0t2z9xEzkQq3w==\n-----END CERTIFICATE REQUEST-----',
     '{"platform":"tpm2"}'::jsonb,
-    CASE WHEN b.status IN ('installed','installing','approved')
+    -- `pending` получает вердикт НАРАВНЕ с остальными (GitLab dexion #890).
+    --
+    -- Раньше здесь стояло только ('installed','installing','approved'), то есть
+    -- у заявок в ожидании вердикта не было вовсе. На ступени `required` сервер
+    -- справедливо отвечал «вердикт аттестации по заявке отсутствует», и первое
+    -- же осмысленное действие в демонстрации — нажать «Одобрить» — не работало
+    -- НИ НА ОДНОЙ заявке. Легенда строки это и так утверждает: рядом стоит
+    -- attestation = '{"platform":"tpm2"}'.
+    CASE WHEN b.status IN ('installed','installing','approved','pending')
          THEN jsonb_build_object(
                 'ok', true,
                 'level', b.attest_level,
@@ -154,9 +175,9 @@ INSERT INTO cert_requests (device_id, status, csr_pem, vault_serial, cert_pem, e
 SELECT
     (SELECT id FROM devices WHERE serial_number = 'SEED-0001'),
     'installed',
-    '-----BEGIN CERTIFICATE REQUEST-----\nSEED-TREND\n-----END CERTIFICATE REQUEST-----',
+    E'-----BEGIN CERTIFICATE REQUEST-----\nMIHZMIGAAgEAMB4xHDAaBgNVBAMME2RlbW9AYWxhdHlyLmV4YW1wbGUwWTATBgcq\nhkjOPQIBBggqhkjOPQMBBwNCAATtcCWwl4xtQtA4peRpvIHIrrFdFnlSUaWwqHjn\nhgOYLM3r00LagoRRUTABjTyLIlKxlIXaKaaZGLS0ZtFjiu2AoAAwCgYIKoZIzj0E\nAwIDSAAwRQIhAL2Nv4yu/Z+C14lfGvYG2dCxLTC3JqfEcBiPm6ApzCj7AiBxamD3\nQz7rIoXj4WST0Bq0XrbxIMR5A0t2z9xEzkQq3w==\n-----END CERTIFICATE REQUEST-----',
     ('aa:bb:' || lpad(d.days_ago::text, 2, '0') || ':' || lpad(g::text, 3, '0')),
-    '-----BEGIN CERTIFICATE-----\nSEED-TREND\n-----END CERTIFICATE-----',
+    E'-----BEGIN CERTIFICATE-----\nMIIBkTCCATegAwIBAgIUGhKanCuzP6gW9SYjmi/Z9z1bnHgwCgYIKoZIzj0EAwIw\nHjEcMBoGA1UEAwwTZGVtb0BhbGF0eXIuZXhhbXBsZTAeFw0yNjA5MjAxNTM4MDBa\nFw0zNjA5MTcxNTM4MDBaMB4xHDAaBgNVBAMME2RlbW9AYWxhdHlyLmV4YW1wbGUw\nWTATBgcqhkjOPQIBBggqhkjOPQMBBwNCAATtcCWwl4xtQtA4peRpvIHIrrFdFnlS\nUaWwqHjnhgOYLM3r00LagoRRUTABjTyLIlKxlIXaKaaZGLS0ZtFjiu2Ao1MwUTAd\nBgNVHQ4EFgQU7YF6x9VrdGdmpCX+9UhA044eMTEwHwYDVR0jBBgwFoAU7YF6x9Vr\ndGdmpCX+9UhA044eMTEwDwYDVR0TAQH/BAUwAwEB/zAKBggqhkjOPQQDAgNIADBF\nAiEAuYwQRD0qOmRZhbLWnVa0PW0OncFgw2IILzk7VUf/2eoCIAbH3oojnojZwqa8\nokh2dCCuX7zAPGspWKjDhG2iAoRf\n-----END CERTIFICATE-----',
     NOW() + '365 days'::interval,
     NOW() - (d.days_ago || ' days')::interval + '1 minute'::interval,
     'seed@wifi.local',
@@ -294,7 +315,7 @@ FROM (VALUES
      NOW() - '1 hour'::interval, NOW() - '30 minutes'::interval),
     -- ssh: installed
     ('SEED-0005', 'ssh', 'deploy-bot', 'installed',
-     '', 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKseedSSHpubkeyFAKEbase64materialxxxxxxxxxxxxxxxx seed@deploy-bot',
+     '', 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIOWmDpLVNCUxL+4yOG2f3aj6VnM3cW92W+WfgE1M9Sf demo@alatyr.example',
      '{"platform":"tpm2"}'::jsonb,
      jsonb_build_object('ok', true, 'level', 'full', 'manufacturer', 'Infineon'),
      'admin@wifi.local', NOW() - '6 days'::interval,
@@ -330,7 +351,7 @@ FROM (VALUES
      NOW() - '30 minutes'::interval, NOW() - '30 minutes'::interval),
     -- ssh: superseded (old identity slot) -- replaced by the row right after it
     ('SEED-0006', 'ssh', 'alice', 'superseded',
-     '', 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKoldSSHpubkeySUPERSEDEDbase64material== seed@old',
+     '', 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIOWmDpLVNCUxL+4yOG2f3aj6VnM3cW92W+WfgE1M9Sf demo@alatyr.example',
      '{"platform":"tpm2"}'::jsonb,
      jsonb_build_object('ok', true, 'level', 'full', 'manufacturer', 'Infineon'),
      'admin@wifi.local', NOW() - '20 days'::interval,
@@ -344,7 +365,7 @@ FROM (VALUES
     -- occupy this slot, which is exactly what idx_cert_requests_active_purpose
     -- enforces (superseded is excluded from its WHERE, so no conflict).
     ('SEED-0006', 'ssh', 'alice', 'installed',
-     '', 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKnewSSHpubkeyCURRENTbase64material== seed@new',
+     '', 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIOWmDpLVNCUxL+4yOG2f3aj6VnM3cW92W+WfgE1M9Sf demo@alatyr.example',
      '{"platform":"tpm2"}'::jsonb,
      jsonb_build_object('ok', true, 'level', 'full', 'manufacturer', 'Infineon'),
      'admin@wifi.local', NOW() - '9 days'::interval,
@@ -355,7 +376,7 @@ FROM (VALUES
      NOW() - '9 days'::interval, NOW() - '8 days'::interval),
     -- ssh: pending
     ('SEED-0007', 'ssh', 'frank', 'pending',
-     '', 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKfrankSSHpubkeyPENDINGbase64materialxxxxxx seed@frank',
+     '', 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIOWmDpLVNCUxL+4yOG2f3aj6VnM3cW92W+WfgE1M9Sf demo@alatyr.example',
      '{"platform":"tpm2"}'::jsonb, NULL,
      NULL, NULL, NULL, NULL, NULL,
      NULL, NULL, NULL, NULL, NULL, NULL,
@@ -420,6 +441,49 @@ WHERE device_id IN (SELECT id FROM devices WHERE serial_number IN ('SEED-0039', 
 UPDATE cert_requests SET attest_result = attest_result || '{"ak_verified": true}'::jsonb
 WHERE device_id IN (SELECT id FROM devices WHERE serial_number IN ('SEED-0019', 'SEED-0020'))
   AND attest_result IS NOT NULL;
+
+-- ДОКАЗАТЕЛЬСТВО РЕЗИДЕНТНОСТИ КЛЮЧА — ЗАЯВКАМ В ОЖИДАНИИ (GitLab dexion #890).
+--
+-- Без него одобрение упирается в следующую ступень: `device did not prove its
+-- private key is resident in a TPM or Secure Enclave`. Ступень правильная, а
+-- фикстура была неполной: строка утверждает `platform: tpm2` и уровень
+-- `hardware`, но доказательства при этом не несёт.
+--
+-- Даётся ТОЛЬКО аппаратным строкам. Программные (`level = software`) остаются
+-- без него намеренно: отказ на них — не дефект демонстрации, а её польза,
+-- человек видит, как ступень работает.
+UPDATE cert_requests r
+SET    attest_result = r.attest_result
+       || jsonb_build_object('ak_verified', true)
+       -- ПЛАТФОРМА ЖИВЁТ ВНУТРИ ВЕРДИКТА, а не только в соседней колонке
+       -- `attestation`. `IsHardwareAttested()` разбирает `attest_result.platform`
+       -- ПО ИЗВЕСТНЫМ значениям, и неизвестное (в том числе отсутствующее) даёт
+       -- false — это защита от «строка клиента выключает проверку» (#371).
+       -- Без этого поля вердикт с level=hardware и ak_verified=true всё равно
+       -- читался как «доказательств нет», и одобрение отказывало.
+       || jsonb_build_object('platform',
+              CASE d.os WHEN 'macos' THEN 'secure_enclave' ELSE 'tpm2' END)
+FROM   devices d
+WHERE  d.id = r.device_id
+  AND  r.status = 'pending'
+  AND  r.attest_result IS NOT NULL
+  AND  r.attest_result->>'level' IN ('full', 'hardware');
+
+-- ЦЕЛИ НАЗНАЧЕНЫ УСТРОЙСТВАМ (GitLab dexion #890).
+--
+-- Пятая и последняя стена демонстрации: сервер отвечал
+-- `device is not assigned the purpose wifi`. Таблица `device_purposes` была
+-- ПУСТА, то есть ни одно демонстрационное устройство не имело ни одной цели —
+-- хотя рядом лежали 766 заявок на эти самые цели.
+--
+-- Назначается ровно то, на что в данных есть заявка: цель берётся из самой
+-- заявки, дубликаты отсекаются. Состояние `approved` — то же, что ставит
+-- администратор из карточки устройства.
+INSERT INTO device_purposes (device_id, purpose, state, requested_by, decided_at, decided_by)
+SELECT DISTINCT r.device_id, r.purpose, 'approved', 'seed', now(), 'admin@wifi.local'
+FROM   cert_requests r
+WHERE  r.purpose IS NOT NULL
+ON CONFLICT DO NOTHING;
 
 UPDATE cert_requests SET vault_error = CASE
     WHEN d.serial_number = 'SEED-0043' THEN 'Vault PKI unreachable: dial tcp 10.0.1.5:8200: connect: connection refused'
@@ -539,8 +603,17 @@ FROM webhook_endpoints WHERE name = 'SEED-Slack-Alerts';
 --    enabled state -- Settings→Issuers currently shows all 4 purposes as
 --    "no profile, env fallback" without this. Upsert (singleton per
 --    purpose), not purged.
+-- РОЛЬ VAULT НАЗВАНА ТАК ЖЕ, КАК ЕЁ ЗАВОДИТ vault-init (GitLab dexion #890).
+--
+-- У цели `wifi` здесь стояло `wifi-cert` — имя ДО переименования продукта в
+-- Alatyr. Демонстрационный vault-init заводит роли `alatyr`, `user-mtls` и
+-- `k8s-client`, роли `wifi-cert` в нём нет. Одобрение доходило до самого
+-- конца и падало у Vault:
+--     vault error 400: {"errors":["unknown role: wifi-cert"]}
+-- В интерфейсе это выглядит как `vault_failed` — то есть отказ показывался
+-- там, где он ни при чём, а причина лежала в фикстуре.
 INSERT INTO issuer_profiles (purpose, backend, vault_mount, vault_role, eku, key_usage, san_template, ttl_hours, key_protection, enabled, created_by, updated_at) VALUES
-    ('wifi',      'vault', 'pki', 'wifi-cert',
+    ('wifi',      'vault', 'pki', 'alatyr',
      ARRAY['clientAuth'], ARRAY['digitalSignature','keyEncipherment'], ARRAY['{{.Username}}'], 26280, 'silent', true,
      'admin@wifi.local', NOW() - '20 days'::interval),
     ('k8s',       'vault', 'pki', 'k8s-client',
@@ -605,7 +678,7 @@ INSERT INTO cert_requests (
 )
 SELECT
     d.id, 'installed',
-    '-----BEGIN CERTIFICATE REQUEST-----\nSEED-FAKE-CSR\n-----END CERTIFICATE REQUEST-----',
+    E'-----BEGIN CERTIFICATE REQUEST-----\nMIHZMIGAAgEAMB4xHDAaBgNVBAMME2RlbW9AYWxhdHlyLmV4YW1wbGUwWTATBgcq\nhkjOPQIBBggqhkjOPQMBBwNCAATtcCWwl4xtQtA4peRpvIHIrrFdFnlSUaWwqHjn\nhgOYLM3r00LagoRRUTABjTyLIlKxlIXaKaaZGLS0ZtFjiu2AoAAwCgYIKoZIzj0E\nAwIDSAAwRQIhAL2Nv4yu/Z+C14lfGvYG2dCxLTC3JqfEcBiPm6ApzCj7AiBxamD3\nQz7rIoXj4WST0Bq0XrbxIMR5A0t2z9xEzkQq3w==\n-----END CERTIFICATE REQUEST-----',
     '{"platform":"tpm2"}'::jsonb,
     jsonb_build_object('ok', true, 'level', 'full', 'manufacturer', 'Intel Corporation — Platform Trust Technology (fTPM) Long Manufacturer Name'),
     'admin@wifi.local', NOW() - '2 days'::interval,
@@ -664,3 +737,63 @@ SELECT purpose, status, count(*),
 FROM cert_requests
 WHERE device_id IN (SELECT id FROM devices WHERE serial_number LIKE 'SEED-%')
 GROUP BY purpose, status ORDER BY purpose, status;
+
+-- ЛИЧНОСТЬ В CSR ДОЛЖНА СОВПАДАТЬ С ЗАЯВЛЕННОЙ (GitLab dexion #890).
+--
+-- Одного настоящего CSR на все строки НЕ хватило: сервер сверяет личность
+-- внутри CSR с личностью устройства и отвечает
+-- `csr identity binding: csr identity does not match declared identity`.
+-- Поэтому здесь по одному настоящему CSR (EC P-256) на каждую из 46
+-- демонстрационных личностей: CN = имя пользователя (обрезано до 64 символов,
+-- как требует X.509), SAN email = полное имя.
+UPDATE cert_requests r
+SET    csr_pem = v.csr
+FROM   (VALUES
+    ('extremely.long.corporate.username.for.layout.testing.purposes@subdomain.department.example-corporation.wifi.local', E'-----BEGIN CERTIFICATE REQUEST-----\nMIIBmjCCAT8CAQAwSzFJMEcGA1UEAwxAZXh0cmVtZWx5LmxvbmcuY29ycG9yYXRl\nLnVzZXJuYW1lLmZvci5sYXlvdXQudGVzdGluZy5wdXJwb3Nlc0BzdTBZMBMGByqG\nSM49AgEGCCqGSM49AwEHA0IABOB3fgRM5+ViGJNwdknQVpJgFactWrLQP/C6STnQ\n8tkFvtphMPu5hINEpZygTXIYJAy58qpQZ4u4ztyhNzWS/duggZEwgY4GCSqGSIb3\nDQEJDjGBgDB+MHwGA1UdEQR1MHOBcWV4dHJlbWVseS5sb25nLmNvcnBvcmF0ZS51\nc2VybmFtZS5mb3IubGF5b3V0LnRlc3RpbmcucHVycG9zZXNAc3ViZG9tYWluLmRl\ncGFydG1lbnQuZXhhbXBsZS1jb3Jwb3JhdGlvbi53aWZpLmxvY2FsMAoGCCqGSM49\nBAMCA0kAMEYCIQDEtrVqj8nWJlaUSQcmG8mzcPSeFVDyJ3QkIC4zQfr6OwIhAM90\nnFiZGargWFSFwoEcTcNdNAm+nxZFCdX6kcr3Panv\n-----END CERTIFICATE REQUEST-----'),
+    ('user01@wifi.local', E'-----BEGIN CERTIFICATE REQUEST-----\nMIIBBjCBrQIBADAcMRowGAYDVQQDDBF1c2VyMDFAd2lmaS5sb2NhbDBZMBMGByqG\nSM49AgEGCCqGSM49AwEHA0IABL2il2tIXqggNC2ZYp1CQuo/GNVFobCN5mj29tTn\nJnXGQgJiDCWxFOcaLRkgjqc6S0iqd6E3Wk2t+DqzvKW8d1qgLzAtBgkqhkiG9w0B\nCQ4xIDAeMBwGA1UdEQQVMBOBEXVzZXIwMUB3aWZpLmxvY2FsMAoGCCqGSM49BAMC\nA0gAMEUCIQDVvJxpjIb/pX/8/oEplnWPPKHOKSy58C8swOYStMWvHgIgLAX2xQ3o\n943gq+mDFiR/PCcNWXIXg7XfMhMJ195IpvU=\n-----END CERTIFICATE REQUEST-----'),
+    ('user02@wifi.local', E'-----BEGIN CERTIFICATE REQUEST-----\nMIIBBzCBrQIBADAcMRowGAYDVQQDDBF1c2VyMDJAd2lmaS5sb2NhbDBZMBMGByqG\nSM49AgEGCCqGSM49AwEHA0IABMN/cu0vnt7HfSrLsr9lCQGMSGEsLVjXb7ZhQAYo\nYANIcveEOepcgpIYvbXquDG0JfysRSfje+++g+K9PzQnl5CgLzAtBgkqhkiG9w0B\nCQ4xIDAeMBwGA1UdEQQVMBOBEXVzZXIwMkB3aWZpLmxvY2FsMAoGCCqGSM49BAMC\nA0kAMEYCIQCK0m/aHO33DBUhq/8gUssrq91SX4CwPa0nA1B+GnsZDQIhAINbQrJQ\nI2F3VODVQ/R5YgPCa+etfV4hzbkeWEC428au\n-----END CERTIFICATE REQUEST-----'),
+    ('user03@wifi.local', E'-----BEGIN CERTIFICATE REQUEST-----\nMIIBBjCBrQIBADAcMRowGAYDVQQDDBF1c2VyMDNAd2lmaS5sb2NhbDBZMBMGByqG\nSM49AgEGCCqGSM49AwEHA0IABGnscZ1qbpfKO0iIZH8tTBr5Bfiba6HY/P9PlUTF\nmBa6WXz36op0uApj4qPkOaXCxYo+cMlBSKQjeMivmTGtv0ygLzAtBgkqhkiG9w0B\nCQ4xIDAeMBwGA1UdEQQVMBOBEXVzZXIwM0B3aWZpLmxvY2FsMAoGCCqGSM49BAMC\nA0gAMEUCIBsuuvBqx8upAQUS/EFijcAJeYq2qN6YJS2zvq4WzGSCAiEA78FdS3OY\nbFl5JcHmZ9T/lW7q1HuA3eeTiEDMi5x74NE=\n-----END CERTIFICATE REQUEST-----'),
+    ('user04@wifi.local', E'-----BEGIN CERTIFICATE REQUEST-----\nMIIBBTCBrQIBADAcMRowGAYDVQQDDBF1c2VyMDRAd2lmaS5sb2NhbDBZMBMGByqG\nSM49AgEGCCqGSM49AwEHA0IABHnmbvc87I75T+ScNZf8DLOTv+V3fOpDfHJmL65t\n+GtapaNYL6Q7KqAQRvnNldBD84+zEHuxyzNSgnyZJPut1HagLzAtBgkqhkiG9w0B\nCQ4xIDAeMBwGA1UdEQQVMBOBEXVzZXIwNEB3aWZpLmxvY2FsMAoGCCqGSM49BAMC\nA0cAMEQCIEXdP2+GszLt5Y6eTDGTgc/aedK8XSHuqMPE+uY49tYxAiAR3m2mv45M\nfaJ4l9FuamSK+NVZCFaSN6ZVGMoBLQ8LfQ==\n-----END CERTIFICATE REQUEST-----'),
+    ('user05@wifi.local', E'-----BEGIN CERTIFICATE REQUEST-----\nMIIBBzCBrQIBADAcMRowGAYDVQQDDBF1c2VyMDVAd2lmaS5sb2NhbDBZMBMGByqG\nSM49AgEGCCqGSM49AwEHA0IABA2ugefxJCJ45bFj4WFFPgc8Wd0jGUtHDZ3ybTDP\nWhDeYLkZMzlSox0lw4QwNWaPTQjkBPSx+yU/ktkGDMbjlvegLzAtBgkqhkiG9w0B\nCQ4xIDAeMBwGA1UdEQQVMBOBEXVzZXIwNUB3aWZpLmxvY2FsMAoGCCqGSM49BAMC\nA0kAMEYCIQCiwCPZv5nmMs7NZ+49hQv0txRDcjAsKpur/yvhq0KLtgIhAPd0hquC\n23TsImmjNuExqJZ7jRuHEilrfzuKKnGnDM+g\n-----END CERTIFICATE REQUEST-----'),
+    ('user06@wifi.local', E'-----BEGIN CERTIFICATE REQUEST-----\nMIIBBzCBrQIBADAcMRowGAYDVQQDDBF1c2VyMDZAd2lmaS5sb2NhbDBZMBMGByqG\nSM49AgEGCCqGSM49AwEHA0IABJYqyzqG8FY9bq+reZBPUdhg1hr9sbzj18bmkGKv\nb7+YUivfcVv3Sw/iHmog0cDheCW2hZUb98A/J9MAsjtPIQ+gLzAtBgkqhkiG9w0B\nCQ4xIDAeMBwGA1UdEQQVMBOBEXVzZXIwNkB3aWZpLmxvY2FsMAoGCCqGSM49BAMC\nA0kAMEYCIQDEEbUWSmFeeBXMKxUD86dAFUcQLYoEJPHOPZH796rPLAIhAMbtxNec\nZtO3tpGKiTuN92wE8TGGcPvFPfwTFETPsxsy\n-----END CERTIFICATE REQUEST-----'),
+    ('user07@wifi.local', E'-----BEGIN CERTIFICATE REQUEST-----\nMIIBBTCBrQIBADAcMRowGAYDVQQDDBF1c2VyMDdAd2lmaS5sb2NhbDBZMBMGByqG\nSM49AgEGCCqGSM49AwEHA0IABGmasVtr+FendGOWque9pSb/vKOFWLZSnFr+O5K5\nTKtrHNevzh9uTPYT1dHi+z7yaCQ9biAC9IIntsbsYUr6yuGgLzAtBgkqhkiG9w0B\nCQ4xIDAeMBwGA1UdEQQVMBOBEXVzZXIwN0B3aWZpLmxvY2FsMAoGCCqGSM49BAMC\nA0cAMEQCIFkcbcvSrwzOqaniEW/NJRmef4UZzxrySoSA05gC7sB0AiBkgGNiey5Y\noviMAqQvPGvn8mWsFhFla+R1R0SsWRNWiw==\n-----END CERTIFICATE REQUEST-----'),
+    ('user08@wifi.local', E'-----BEGIN CERTIFICATE REQUEST-----\nMIIBBjCBrQIBADAcMRowGAYDVQQDDBF1c2VyMDhAd2lmaS5sb2NhbDBZMBMGByqG\nSM49AgEGCCqGSM49AwEHA0IABFh+4MKYH5BEXuwnqCXvAq4U8Gxw/1aTpr7EfjDy\nLSAft2lVAIrpYPJybDriJZbtbL3wYYvV3mV59quZAy48MVigLzAtBgkqhkiG9w0B\nCQ4xIDAeMBwGA1UdEQQVMBOBEXVzZXIwOEB3aWZpLmxvY2FsMAoGCCqGSM49BAMC\nA0gAMEUCIQCuADccz+yo+4va9zxbzZqSBomA4nlaQNRvjwMw+yeJ3AIgSPV7Rvp7\nmFsWeylH1/Of3aGRKEhtnTgqYgfV5cIyUlA=\n-----END CERTIFICATE REQUEST-----'),
+    ('user09@wifi.local', E'-----BEGIN CERTIFICATE REQUEST-----\nMIIBBjCBrQIBADAcMRowGAYDVQQDDBF1c2VyMDlAd2lmaS5sb2NhbDBZMBMGByqG\nSM49AgEGCCqGSM49AwEHA0IABN0Jyti1sIeWw6htInxLealERWaU0huET5Y1ejp1\nTvWOkfoOQZ3WXSKdJmO+IT+lmqRbzDxRuwbf+8dDdZ3Fhy2gLzAtBgkqhkiG9w0B\nCQ4xIDAeMBwGA1UdEQQVMBOBEXVzZXIwOUB3aWZpLmxvY2FsMAoGCCqGSM49BAMC\nA0gAMEUCIEYf0PLnCNOrcM01ey8QivLd1Hr8qULCocB3tLqgT0NVAiEA287Q6oY2\nmJmF+n0y8XEXVV03lUFxuZSribKnkHin7Es=\n-----END CERTIFICATE REQUEST-----'),
+    ('user10@wifi.local', E'-----BEGIN CERTIFICATE REQUEST-----\nMIIBBzCBrQIBADAcMRowGAYDVQQDDBF1c2VyMTBAd2lmaS5sb2NhbDBZMBMGByqG\nSM49AgEGCCqGSM49AwEHA0IABDJz4+Pc8sVtCZW1bWYTqEa8H7E9fMQP/aQcuZgN\n3mmEEX/EK736adynlU7St59M7jveyz/cUsnGstFuJJEIG56gLzAtBgkqhkiG9w0B\nCQ4xIDAeMBwGA1UdEQQVMBOBEXVzZXIxMEB3aWZpLmxvY2FsMAoGCCqGSM49BAMC\nA0kAMEYCIQDKaaKvtUAmU1WrNbmwzc3cIv+dsSqgqkhyWXs+faBAqQIhAPx0mxiu\nNOlRMNNwfQLMe5cjRsINDSwUnuaD/EpqSre0\n-----END CERTIFICATE REQUEST-----'),
+    ('user11@wifi.local', E'-----BEGIN CERTIFICATE REQUEST-----\nMIIBBjCBrQIBADAcMRowGAYDVQQDDBF1c2VyMTFAd2lmaS5sb2NhbDBZMBMGByqG\nSM49AgEGCCqGSM49AwEHA0IABLeVzljfy8aXnfAwSRSbZqaWC9kBSE7RyuqjicRJ\nFT+6Mw/Zba4DkV2fcoPOZdxDyVf/GIzU5BPr74fVr2AVDlegLzAtBgkqhkiG9w0B\nCQ4xIDAeMBwGA1UdEQQVMBOBEXVzZXIxMUB3aWZpLmxvY2FsMAoGCCqGSM49BAMC\nA0gAMEUCIF2zsh95vV1PExB+LvdnFOCHOEyHNzX2nOrN5KUtpS29AiEAhtsWyzmh\nAajUcDeLkwEDKFpj0s2BkfVzv9EMwrem6Cw=\n-----END CERTIFICATE REQUEST-----'),
+    ('user12@wifi.local', E'-----BEGIN CERTIFICATE REQUEST-----\nMIIBBzCBrQIBADAcMRowGAYDVQQDDBF1c2VyMTJAd2lmaS5sb2NhbDBZMBMGByqG\nSM49AgEGCCqGSM49AwEHA0IABP9K1/eUVsZ39RRCwyaRpI4dFk4JKR2AXAUPXme6\nen1uMwK86S16Y4e07HZLhfemvjsBu9UqGYWGy12V0fOWAFWgLzAtBgkqhkiG9w0B\nCQ4xIDAeMBwGA1UdEQQVMBOBEXVzZXIxMkB3aWZpLmxvY2FsMAoGCCqGSM49BAMC\nA0kAMEYCIQCHNyc5N7azL/HxgOe5o9vHra+Uv3pwJ/K4dEaKCOzwnwIhAMv2rNdQ\nEXeeuysFzFtnkD+0L8dhpwTSDrDsr39xnv2p\n-----END CERTIFICATE REQUEST-----'),
+    ('user13@wifi.local', E'-----BEGIN CERTIFICATE REQUEST-----\nMIIBBzCBrQIBADAcMRowGAYDVQQDDBF1c2VyMTNAd2lmaS5sb2NhbDBZMBMGByqG\nSM49AgEGCCqGSM49AwEHA0IABM9r96taUKL1Wf5uKOGuky5PJJC3sEd34bXzz6wS\nKFJBl7csRYjCEhVFoMwleRq0gryC/wpqXg0i2uk+iUH2Jc2gLzAtBgkqhkiG9w0B\nCQ4xIDAeMBwGA1UdEQQVMBOBEXVzZXIxM0B3aWZpLmxvY2FsMAoGCCqGSM49BAMC\nA0kAMEYCIQDNNcGnuo/Goa4uQuEzwB0dZ/Fl3pcqqZi0a4RSgSK+AgIhALCpQtIv\nMbbgvew6NuXynTpQ9uXtBtj+lEcSuuD+T/lU\n-----END CERTIFICATE REQUEST-----'),
+    ('user14@wifi.local', E'-----BEGIN CERTIFICATE REQUEST-----\nMIIBBjCBrQIBADAcMRowGAYDVQQDDBF1c2VyMTRAd2lmaS5sb2NhbDBZMBMGByqG\nSM49AgEGCCqGSM49AwEHA0IABGhDUmnqoil9xgqlYPNQCLZd2YU2SntnlJhgLoHd\n82HZ6sk3NiR3kZkFbl4N30bDS37PVpOl6tX6YRbCkLoRQuygLzAtBgkqhkiG9w0B\nCQ4xIDAeMBwGA1UdEQQVMBOBEXVzZXIxNEB3aWZpLmxvY2FsMAoGCCqGSM49BAMC\nA0gAMEUCIQD3RmT5AX4rQ71u7+MelE1ALmMqZ9nFk84HxG1s0jiunAIgcb6NY40Q\nYftfJW1D/p93wnDAaQwnZZ/jkhbnKmbkwFU=\n-----END CERTIFICATE REQUEST-----'),
+    ('user15@wifi.local', E'-----BEGIN CERTIFICATE REQUEST-----\nMIIBBjCBrQIBADAcMRowGAYDVQQDDBF1c2VyMTVAd2lmaS5sb2NhbDBZMBMGByqG\nSM49AgEGCCqGSM49AwEHA0IABClpHhpZUeo43YOV7n2wAV9xWOUXtjB199KYYC7P\nOVtU6Z6jbX+6dO6s1tSduQizTOI6Ir6amgB1DCQnNwvz76egLzAtBgkqhkiG9w0B\nCQ4xIDAeMBwGA1UdEQQVMBOBEXVzZXIxNUB3aWZpLmxvY2FsMAoGCCqGSM49BAMC\nA0gAMEUCIBmTCMzHsGfapqUJW//WFrzCq13yTzjMcM9NSR6IrQ+JAiEAxjEVrDnk\nFSyZySJpmxUf6X6xDYYVjSdFGKPkb2nIc5A=\n-----END CERTIFICATE REQUEST-----'),
+    ('user16@wifi.local', E'-----BEGIN CERTIFICATE REQUEST-----\nMIIBBjCBrQIBADAcMRowGAYDVQQDDBF1c2VyMTZAd2lmaS5sb2NhbDBZMBMGByqG\nSM49AgEGCCqGSM49AwEHA0IABALtZZzWKgikcRlenaqiOuS7PsX1EC9clY9jG50+\nBYiS06jFBHcKvjUlgT+zVwYIrc6RBTrsqlr7yOVqiooX4uCgLzAtBgkqhkiG9w0B\nCQ4xIDAeMBwGA1UdEQQVMBOBEXVzZXIxNkB3aWZpLmxvY2FsMAoGCCqGSM49BAMC\nA0gAMEUCIQDTbbsktqpDCkaWcsh9Edga5HdaiNBXTS/xMx29f9nFBwIgNpsbn+pZ\nfoJAaY6ed06ovys1DCyVRlYxXtGh7Mwfw9s=\n-----END CERTIFICATE REQUEST-----'),
+    ('user17@wifi.local', E'-----BEGIN CERTIFICATE REQUEST-----\nMIIBBjCBrQIBADAcMRowGAYDVQQDDBF1c2VyMTdAd2lmaS5sb2NhbDBZMBMGByqG\nSM49AgEGCCqGSM49AwEHA0IABFUTbjbZIBuHZ0VTLUWShB1iD7ZE6/+cSpdo/ILQ\ngml+df0Pj8rWPgCCYKrWVHLRsr3yXAof58JUUXv/RopNLOWgLzAtBgkqhkiG9w0B\nCQ4xIDAeMBwGA1UdEQQVMBOBEXVzZXIxN0B3aWZpLmxvY2FsMAoGCCqGSM49BAMC\nA0gAMEUCIQCw0rmAvVGQTo7higLvUEoxng14yasTnKsKJ3wAtEB8OwIgEUy3X5Sh\nKv48hH5nOpTG6EBpZ8yQQVhgVr/eN/NltcY=\n-----END CERTIFICATE REQUEST-----'),
+    ('user18@wifi.local', E'-----BEGIN CERTIFICATE REQUEST-----\nMIIBBzCBrQIBADAcMRowGAYDVQQDDBF1c2VyMThAd2lmaS5sb2NhbDBZMBMGByqG\nSM49AgEGCCqGSM49AwEHA0IABHNT9a6qAQyiMbeW7WD8l/pO9gOh3vZjYuw/4BkH\n8xX4UWfbdDH1frqBEqSoOsbr4rPPCaUhVup8kC/cyDbXMXWgLzAtBgkqhkiG9w0B\nCQ4xIDAeMBwGA1UdEQQVMBOBEXVzZXIxOEB3aWZpLmxvY2FsMAoGCCqGSM49BAMC\nA0kAMEYCIQDNJQZZfNL+vfxNANSp/v8qdjkHwo10o1q1iPgQqP4czAIhAJYBzqkT\n9BdAO+zSFAe55XiYgqut+R3facrcLK3PhMZK\n-----END CERTIFICATE REQUEST-----'),
+    ('user19@wifi.local', E'-----BEGIN CERTIFICATE REQUEST-----\nMIIBBzCBrQIBADAcMRowGAYDVQQDDBF1c2VyMTlAd2lmaS5sb2NhbDBZMBMGByqG\nSM49AgEGCCqGSM49AwEHA0IABIwcQfjNs+HOFlGQd/qjbbP7h8dtcNddfKETo5tM\n3ZGST/P/1WV+E2849kSmJfx5orzOqgP1Aftw5pH1BAv2ke6gLzAtBgkqhkiG9w0B\nCQ4xIDAeMBwGA1UdEQQVMBOBEXVzZXIxOUB3aWZpLmxvY2FsMAoGCCqGSM49BAMC\nA0kAMEYCIQC71vKEqvPvR1ZoLVBTZ5xzqfNnnX7KX743X0o65M4eCQIhAIxv0B8B\nHFoUs1ESmxQs1tCTZ9/hLBtItgfM3cl8DpC+\n-----END CERTIFICATE REQUEST-----'),
+    ('user20@wifi.local', E'-----BEGIN CERTIFICATE REQUEST-----\nMIIBBjCBrQIBADAcMRowGAYDVQQDDBF1c2VyMjBAd2lmaS5sb2NhbDBZMBMGByqG\nSM49AgEGCCqGSM49AwEHA0IABH2sO87X118myQjSBKiqMRZNErZERkCpDFLS9Yox\nEwUjHuV9YC+7ELp4mmPEJ94ZEdgJrdwANuAzAwyPxJVKx5igLzAtBgkqhkiG9w0B\nCQ4xIDAeMBwGA1UdEQQVMBOBEXVzZXIyMEB3aWZpLmxvY2FsMAoGCCqGSM49BAMC\nA0gAMEUCIQCDD5RzxpFdje7W2PBVP2zFmqhEumjjmPjagbKx0GdHzgIgRIPGl3ih\nic6MzGvFCA+EEnhTQgo8x3Un5wwjYPYmr5c=\n-----END CERTIFICATE REQUEST-----'),
+    ('user21@wifi.local', E'-----BEGIN CERTIFICATE REQUEST-----\nMIIBBjCBrQIBADAcMRowGAYDVQQDDBF1c2VyMjFAd2lmaS5sb2NhbDBZMBMGByqG\nSM49AgEGCCqGSM49AwEHA0IABMBxzK42ADEv7ngYen7afJFqtaMnwCAGg3MTUA+y\nfqNonzOy/E2yV0GuBavaXRhIls5FOQ2oO5G19cmOUEqbZmugLzAtBgkqhkiG9w0B\nCQ4xIDAeMBwGA1UdEQQVMBOBEXVzZXIyMUB3aWZpLmxvY2FsMAoGCCqGSM49BAMC\nA0gAMEUCIGVKMCfgdMXfFW2j/ve+FNIkrfsGJb8zp+vvv9lgC8BnAiEA2unvgHXg\nT+WO6sWGtdwN0Dj4LXcau1a3N4kqyB3Ify8=\n-----END CERTIFICATE REQUEST-----'),
+    ('user22@wifi.local', E'-----BEGIN CERTIFICATE REQUEST-----\nMIIBBjCBrQIBADAcMRowGAYDVQQDDBF1c2VyMjJAd2lmaS5sb2NhbDBZMBMGByqG\nSM49AgEGCCqGSM49AwEHA0IABOwrbHJovZFICs/R4E/9ILOVIBqBE7LNSR9sStfD\nPItkL5Vu30Wu56aKzjpR19PfWvLqzABoZupUyHRpSjbc6pigLzAtBgkqhkiG9w0B\nCQ4xIDAeMBwGA1UdEQQVMBOBEXVzZXIyMkB3aWZpLmxvY2FsMAoGCCqGSM49BAMC\nA0gAMEUCIANm0C/dl2I3rKtKkCKIDxLzs90071PajfB9lfbSQv3WAiEAwVWkxHp6\nMfxYyBWoOeJPunyo/VLJF8wOR6f+Gpe+sLo=\n-----END CERTIFICATE REQUEST-----'),
+    ('user23@wifi.local', E'-----BEGIN CERTIFICATE REQUEST-----\nMIIBBjCBrQIBADAcMRowGAYDVQQDDBF1c2VyMjNAd2lmaS5sb2NhbDBZMBMGByqG\nSM49AgEGCCqGSM49AwEHA0IABESsebrU8u9rvOv6iBY1i9nldoQSAoPDI90+E+9n\nvxQ+vIYKoIWrnjYTR9P0iy1HtC6w2RHmxt0POxrgPk6SU62gLzAtBgkqhkiG9w0B\nCQ4xIDAeMBwGA1UdEQQVMBOBEXVzZXIyM0B3aWZpLmxvY2FsMAoGCCqGSM49BAMC\nA0gAMEUCIQDfD8ovtjk5OacRPOnvQ5jNHYYuDGR5V8fh8S2ZuEzSUAIgWDZZgnCJ\nC/cpGvwfxxpHtUpeaSDeeR083hAdffYU3VA=\n-----END CERTIFICATE REQUEST-----'),
+    ('user24@wifi.local', E'-----BEGIN CERTIFICATE REQUEST-----\nMIIBBTCBrQIBADAcMRowGAYDVQQDDBF1c2VyMjRAd2lmaS5sb2NhbDBZMBMGByqG\nSM49AgEGCCqGSM49AwEHA0IABGzve5hvZO4HWQy5mLbuJg/F1iKTJSVzRMw08weU\n762W6luLpsPzwUrb7pO/Y0l3J3xagKAwjJr09TqM3FFJRs+gLzAtBgkqhkiG9w0B\nCQ4xIDAeMBwGA1UdEQQVMBOBEXVzZXIyNEB3aWZpLmxvY2FsMAoGCCqGSM49BAMC\nA0cAMEQCIEGdVWm+2GsaFT0Z1fx7hsUcDxmeZ0B9BzrtdNc9x4VNAiBcp7VLHD5j\nzqs1PJmn82ls2pRw4FEQtgR4oEvtvuFXLw==\n-----END CERTIFICATE REQUEST-----'),
+    ('user25@wifi.local', E'-----BEGIN CERTIFICATE REQUEST-----\nMIIBBjCBrQIBADAcMRowGAYDVQQDDBF1c2VyMjVAd2lmaS5sb2NhbDBZMBMGByqG\nSM49AgEGCCqGSM49AwEHA0IABO9D23Cv/357E1EdqZPb5SvyBcrayiir7rWEXzU/\nXq5XQP3v4orZMkQCtzMbQK1MfWQWUMZw+wiGV4P5u6M1jJugLzAtBgkqhkiG9w0B\nCQ4xIDAeMBwGA1UdEQQVMBOBEXVzZXIyNUB3aWZpLmxvY2FsMAoGCCqGSM49BAMC\nA0gAMEUCIFbfz/u+iM5e2+4hTg98xUbO16dwiS2/yGiZ/WESEliFAiEAy50ILo0/\ngmZdYQ31TN4i9B2eXIth54rlP3XvEinxPLY=\n-----END CERTIFICATE REQUEST-----'),
+    ('user26@wifi.local', E'-----BEGIN CERTIFICATE REQUEST-----\nMIIBBjCBrQIBADAcMRowGAYDVQQDDBF1c2VyMjZAd2lmaS5sb2NhbDBZMBMGByqG\nSM49AgEGCCqGSM49AwEHA0IABKRj/bxhxHr6Q8GvK7pJslRUKpPqe1wE2aOUQBHa\niXLLKTX11xqsZCBg8IBs27MWHml9BV6oApk26bbQRBeG+eSgLzAtBgkqhkiG9w0B\nCQ4xIDAeMBwGA1UdEQQVMBOBEXVzZXIyNkB3aWZpLmxvY2FsMAoGCCqGSM49BAMC\nA0gAMEUCIQDYlaLgws82fd8Rw79+9BmajIEHmt9ggEx+uFSlaYkB2AIgNsq0DwDz\nGdBvuBqJPowNrauhjAa0Q0ff8gGk1ovk0Go=\n-----END CERTIFICATE REQUEST-----'),
+    ('user27@wifi.local', E'-----BEGIN CERTIFICATE REQUEST-----\nMIIBBjCBrQIBADAcMRowGAYDVQQDDBF1c2VyMjdAd2lmaS5sb2NhbDBZMBMGByqG\nSM49AgEGCCqGSM49AwEHA0IABKKKNd7CP+qy4Q8v40ROs4/CLCcvH2yRKinB3ShJ\namKnw5C9/4q8hgfrLQY4r1qXWVZ1DDenhEuZzaiqdjz8nqSgLzAtBgkqhkiG9w0B\nCQ4xIDAeMBwGA1UdEQQVMBOBEXVzZXIyN0B3aWZpLmxvY2FsMAoGCCqGSM49BAMC\nA0gAMEUCIQCdtjUKkmtM6H8jnLbFxW/ypS+zKsTHz8erqLL3nQgmvwIgbbrOwZAC\nAnGVbL/4boT3B3CYiqdChJSXk9k74taiv8g=\n-----END CERTIFICATE REQUEST-----'),
+    ('user28@wifi.local', E'-----BEGIN CERTIFICATE REQUEST-----\nMIIBBjCBrQIBADAcMRowGAYDVQQDDBF1c2VyMjhAd2lmaS5sb2NhbDBZMBMGByqG\nSM49AgEGCCqGSM49AwEHA0IABLZsEvqrea06SRx9eDLxH8WE8kmhvVacwRcPPH7p\nungcu4xyaorbAKrHPsbDlLOWJ5+pYgovT7BljoHWzmEXVICgLzAtBgkqhkiG9w0B\nCQ4xIDAeMBwGA1UdEQQVMBOBEXVzZXIyOEB3aWZpLmxvY2FsMAoGCCqGSM49BAMC\nA0gAMEUCIFQawKuYcymjmcRjlvjViSTSTgS7vFAr9uGH0dbR5I0bAiEAjGKXAP3v\niaitn3RKHHKBLlBWodm1kdGwFBw6i+AFK5g=\n-----END CERTIFICATE REQUEST-----'),
+    ('user29@wifi.local', E'-----BEGIN CERTIFICATE REQUEST-----\nMIIBBjCBrQIBADAcMRowGAYDVQQDDBF1c2VyMjlAd2lmaS5sb2NhbDBZMBMGByqG\nSM49AgEGCCqGSM49AwEHA0IABMgU1Ab2VeKFm3n+fTepyC2tzu7j4jkuwXrNOaf2\ngYvK3x2txbSGc1q9sPminUwJbZt0T1FqZ4lqO+nsz5FLWsOgLzAtBgkqhkiG9w0B\nCQ4xIDAeMBwGA1UdEQQVMBOBEXVzZXIyOUB3aWZpLmxvY2FsMAoGCCqGSM49BAMC\nA0gAMEUCIFUs/BHyjeNp8FvMJKrOreDuuFsLIk5COwgv70y8aojiAiEAw+gllcXW\nyhawUDwtqFT3rB3qPKMsVdIB4Er0mL4pQxM=\n-----END CERTIFICATE REQUEST-----'),
+    ('user30@wifi.local', E'-----BEGIN CERTIFICATE REQUEST-----\nMIIBBzCBrQIBADAcMRowGAYDVQQDDBF1c2VyMzBAd2lmaS5sb2NhbDBZMBMGByqG\nSM49AgEGCCqGSM49AwEHA0IABJyR3XSNKlLPjvLV71mo7cxIBG0qANK2iJKGoitr\nkhsoBmCywYC5aEUzFJ7VZzdhJQfa3/tKxlx6fnEmenOi7ZigLzAtBgkqhkiG9w0B\nCQ4xIDAeMBwGA1UdEQQVMBOBEXVzZXIzMEB3aWZpLmxvY2FsMAoGCCqGSM49BAMC\nA0kAMEYCIQCc188AppjKG+afATzHKkYPP33BHFHo4p1Y17LfXB8cJQIhAL6kDDgq\nRAj0VEDqj22D1WpKW2qjfY2NwvAUBTUySc3L\n-----END CERTIFICATE REQUEST-----'),
+    ('user31@wifi.local', E'-----BEGIN CERTIFICATE REQUEST-----\nMIIBBTCBrQIBADAcMRowGAYDVQQDDBF1c2VyMzFAd2lmaS5sb2NhbDBZMBMGByqG\nSM49AgEGCCqGSM49AwEHA0IABHD7kPFk5yu5UuWcbT861oHs5gN0P7oz/SC5bWc0\nFDPAydwB3XUkx8855fZs1MVSQlO+CLzg/Pb0bstltJ9i6OegLzAtBgkqhkiG9w0B\nCQ4xIDAeMBwGA1UdEQQVMBOBEXVzZXIzMUB3aWZpLmxvY2FsMAoGCCqGSM49BAMC\nA0cAMEQCIF7AdGqJ8Viax0JjJ59GCZp6CxnS7UzQnSlhswyqvqavAiBfVeLxjU3E\n0679J4awcVjCw2VVkqSPIC1cowpJ80uyjA==\n-----END CERTIFICATE REQUEST-----'),
+    ('user32@wifi.local', E'-----BEGIN CERTIFICATE REQUEST-----\nMIIBBTCBrQIBADAcMRowGAYDVQQDDBF1c2VyMzJAd2lmaS5sb2NhbDBZMBMGByqG\nSM49AgEGCCqGSM49AwEHA0IABFoPPXlh4pjyLa+xcnXCna0HFXLLrMMyLL9m0CKE\nCPP2cmjlE/idIYZQOSubRDDmOh6tzWslK3Kkpf+I+ofw+yygLzAtBgkqhkiG9w0B\nCQ4xIDAeMBwGA1UdEQQVMBOBEXVzZXIzMkB3aWZpLmxvY2FsMAoGCCqGSM49BAMC\nA0cAMEQCIF2sn6VijhwGRKSwIMBp1DFZlJVr0ox6nIT2NPmnAW1ZAiBtO/9vlPSC\ne3ajvBgj/9bx/TTKAlgm8GiAmtAeByp8RA==\n-----END CERTIFICATE REQUEST-----'),
+    ('user33@wifi.local', E'-----BEGIN CERTIFICATE REQUEST-----\nMIIBBTCBrQIBADAcMRowGAYDVQQDDBF1c2VyMzNAd2lmaS5sb2NhbDBZMBMGByqG\nSM49AgEGCCqGSM49AwEHA0IABId39vrmAz0j4hbVuHH1c4/Y86L/tgX+E3zcPpWi\nxpjsKdZYhw99srN9MAI4myTQAIJbLh1Rpz0y9D/QJAxHtjqgLzAtBgkqhkiG9w0B\nCQ4xIDAeMBwGA1UdEQQVMBOBEXVzZXIzM0B3aWZpLmxvY2FsMAoGCCqGSM49BAMC\nA0cAMEQCIGqODxuEIs+mb6iJ1HuIcK7q+Wo7IgxDsAqyNBcAhemeAiArAIP5tBuD\n/aLjpvvlwRD+JWE4H1wH7ZT9sdj5KTeWdw==\n-----END CERTIFICATE REQUEST-----'),
+    ('user34@wifi.local', E'-----BEGIN CERTIFICATE REQUEST-----\nMIIBBjCBrQIBADAcMRowGAYDVQQDDBF1c2VyMzRAd2lmaS5sb2NhbDBZMBMGByqG\nSM49AgEGCCqGSM49AwEHA0IABB+EEbXVSThZaWkLDd3yGd+4JT2JGb0ytrworGnw\nuEpl1eUeX+PLAbxtj73ocIxECsydMenLKteemO+Kh1O5gGygLzAtBgkqhkiG9w0B\nCQ4xIDAeMBwGA1UdEQQVMBOBEXVzZXIzNEB3aWZpLmxvY2FsMAoGCCqGSM49BAMC\nA0gAMEUCIFIyZdoNUPN9HyStSFra5nAllOE7sGbC70ZMhxl2A+6PAiEA9VKDBr1k\nmFgA5IfDc0pT+8qqh9HRRN5gfnnyiRs1Qkk=\n-----END CERTIFICATE REQUEST-----'),
+    ('user35@wifi.local', E'-----BEGIN CERTIFICATE REQUEST-----\nMIIBBjCBrQIBADAcMRowGAYDVQQDDBF1c2VyMzVAd2lmaS5sb2NhbDBZMBMGByqG\nSM49AgEGCCqGSM49AwEHA0IABCGyC1o7yjPEODuu/ZfzKudOAhgNTQkVu8RyMa6T\nUIZLCmvh23N2tK9m8r5J7s+efkIzCeNEbjxPA5iBPIbxvBugLzAtBgkqhkiG9w0B\nCQ4xIDAeMBwGA1UdEQQVMBOBEXVzZXIzNUB3aWZpLmxvY2FsMAoGCCqGSM49BAMC\nA0gAMEUCIQDovOtH5JrAhnlI5XKKHWhMCoJZZqW8S6oUwzyqu88UTwIgJ0RCgOG2\neIS+DJFt69JYh/k4d57wED1Z4U4PPWRoSD8=\n-----END CERTIFICATE REQUEST-----'),
+    ('user36@wifi.local', E'-----BEGIN CERTIFICATE REQUEST-----\nMIIBBTCBrQIBADAcMRowGAYDVQQDDBF1c2VyMzZAd2lmaS5sb2NhbDBZMBMGByqG\nSM49AgEGCCqGSM49AwEHA0IABEqqGMMm03H1iOEvbdIKjqwSJ0Yl6RgMT3wSwFbl\n+rov7At3U5gfkWElxVXd7NVHqOivlXj6LaIO1szLj8E0a8igLzAtBgkqhkiG9w0B\nCQ4xIDAeMBwGA1UdEQQVMBOBEXVzZXIzNkB3aWZpLmxvY2FsMAoGCCqGSM49BAMC\nA0cAMEQCIGmnaTL3wztY+CRzr1aUZ8rHIPfSjEsQbCmba3rMsBUZAiAa7jwSeNVE\nkqxjt/dI6RFp3kOye+iB1p+EEBvGqrBuRA==\n-----END CERTIFICATE REQUEST-----'),
+    ('user37@wifi.local', E'-----BEGIN CERTIFICATE REQUEST-----\nMIIBBTCBrQIBADAcMRowGAYDVQQDDBF1c2VyMzdAd2lmaS5sb2NhbDBZMBMGByqG\nSM49AgEGCCqGSM49AwEHA0IABE+Cbco8nOo+OxGJKHsA0mFb3bx0m3de9usjJMhd\ndcRw5zP21OmuOoToJS6ewpiABqcG5kv0v1xpPYgtsHRKAX2gLzAtBgkqhkiG9w0B\nCQ4xIDAeMBwGA1UdEQQVMBOBEXVzZXIzN0B3aWZpLmxvY2FsMAoGCCqGSM49BAMC\nA0cAMEQCIFsKaQJZHHJFbN8UMR1lDnYLPCOq6ntZzxHAuNGKdO3/AiB7CBPs6QTm\n6yKdhZrjW9LRJRouetWVi+zuONTp1VtBZw==\n-----END CERTIFICATE REQUEST-----'),
+    ('user38@wifi.local', E'-----BEGIN CERTIFICATE REQUEST-----\nMIIBBzCBrQIBADAcMRowGAYDVQQDDBF1c2VyMzhAd2lmaS5sb2NhbDBZMBMGByqG\nSM49AgEGCCqGSM49AwEHA0IABIx4h39klm7bCWCM53HLURFANU6Lycb+2WShqnQV\nmw0i1enuV/qbJ8i2I9INC86/CJSZzUUklMWasB0M7VOvk1ugLzAtBgkqhkiG9w0B\nCQ4xIDAeMBwGA1UdEQQVMBOBEXVzZXIzOEB3aWZpLmxvY2FsMAoGCCqGSM49BAMC\nA0kAMEYCIQCZyDGxtV6Yl5v9LiiRqN91merzWVD6+VEMaPsTalaiUwIhAJv4d8es\nvWCzfv5mkYAqW/SyJTNCesl7B2iTBH7LOwZd\n-----END CERTIFICATE REQUEST-----'),
+    ('user39@wifi.local', E'-----BEGIN CERTIFICATE REQUEST-----\nMIIBBzCBrQIBADAcMRowGAYDVQQDDBF1c2VyMzlAd2lmaS5sb2NhbDBZMBMGByqG\nSM49AgEGCCqGSM49AwEHA0IABGCrM7cv7OU7E9P0wgZY9Yz/mkc0mnicoUEFfUlz\neuBd5WDilObFFJWor+2OUDBrbzMGjwKP/x2mLV3rFjed2DCgLzAtBgkqhkiG9w0B\nCQ4xIDAeMBwGA1UdEQQVMBOBEXVzZXIzOUB3aWZpLmxvY2FsMAoGCCqGSM49BAMC\nA0kAMEYCIQCvsj4KTlANemnPepL69WADf/cy4dNkGDNErBUlLlgT0AIhAJxhxnlM\nzJ6R5Xw0uKUKmjZnBZTcCn+AOTc4dUf0ac/D\n-----END CERTIFICATE REQUEST-----'),
+    ('user40@wifi.local', E'-----BEGIN CERTIFICATE REQUEST-----\nMIIBBTCBrQIBADAcMRowGAYDVQQDDBF1c2VyNDBAd2lmaS5sb2NhbDBZMBMGByqG\nSM49AgEGCCqGSM49AwEHA0IABF6aXVuAcaMKUkdnCA7f7IRatavwx8qzSi+UDtmR\n0+t6kVvbLuZsXFNYfiDAR8cQCUBVMh7xbh20KM3Jhe0nMUegLzAtBgkqhkiG9w0B\nCQ4xIDAeMBwGA1UdEQQVMBOBEXVzZXI0MEB3aWZpLmxvY2FsMAoGCCqGSM49BAMC\nA0cAMEQCIGRAvOij0bIlE0zzpMRo3GrmMJ0bAOtwNYl7Ix1w9GK0AiAX9wtnCs78\nlHtCjt+3JnkwfJUg/X/yQGcDpuEdlMvUNA==\n-----END CERTIFICATE REQUEST-----'),
+    ('user41@wifi.local', E'-----BEGIN CERTIFICATE REQUEST-----\nMIIBBzCBrQIBADAcMRowGAYDVQQDDBF1c2VyNDFAd2lmaS5sb2NhbDBZMBMGByqG\nSM49AgEGCCqGSM49AwEHA0IABIlmmd5STi+mkqEcW5AGKvZEUuhTmTlpAgGZ+jV3\ncPSR4KOhp0xcHAaa+KoSevHypxwvyuq38Vz4bijHQQ8wRdGgLzAtBgkqhkiG9w0B\nCQ4xIDAeMBwGA1UdEQQVMBOBEXVzZXI0MUB3aWZpLmxvY2FsMAoGCCqGSM49BAMC\nA0kAMEYCIQDbQMu8GeIJhWTjbJKfdJRcWpxbhGevpn/YwYK5pINTewIhAIHNVBJ/\nQL1CLbA+4fW/0wnce927TQv5k+rtnatqshZ2\n-----END CERTIFICATE REQUEST-----'),
+    ('user42@wifi.local', E'-----BEGIN CERTIFICATE REQUEST-----\nMIIBBzCBrQIBADAcMRowGAYDVQQDDBF1c2VyNDJAd2lmaS5sb2NhbDBZMBMGByqG\nSM49AgEGCCqGSM49AwEHA0IABF8thK6yLeP78LL0Qf0tFZ/CsqD9EB8iv8CzD/ht\nH7yHayzKh8Z4u3Gn/NcTcCIaJgaFYVPj2OxMqfMuv5Xk6MagLzAtBgkqhkiG9w0B\nCQ4xIDAeMBwGA1UdEQQVMBOBEXVzZXI0MkB3aWZpLmxvY2FsMAoGCCqGSM49BAMC\nA0kAMEYCIQDE6Ias5EqaFM3O98Q914wcrZpeTGprecUR3vSofU1+KAIhAPN0oaLt\nOufbK4Xo2KJPjv89ec30zvdYXoLA1hyxVoGa\n-----END CERTIFICATE REQUEST-----'),
+    ('user43@wifi.local', E'-----BEGIN CERTIFICATE REQUEST-----\nMIIBBjCBrQIBADAcMRowGAYDVQQDDBF1c2VyNDNAd2lmaS5sb2NhbDBZMBMGByqG\nSM49AgEGCCqGSM49AwEHA0IABFke81rcekC1fqcD/SSQqyDkc9vmvVQSGEhMNHDH\ndxvYzvfqt3BZMHHfO3ATkbVdGRqlGvrJJCYyQ6tteZGD7iqgLzAtBgkqhkiG9w0B\nCQ4xIDAeMBwGA1UdEQQVMBOBEXVzZXI0M0B3aWZpLmxvY2FsMAoGCCqGSM49BAMC\nA0gAMEUCIQDf7vkfGycZy7LfOcFFt0S4T2pQa//t7HkLG7XRVssXSgIgMma2eyP2\n4rw9MLP2UXYRoyDzbCVR9HxjI64lztNRP68=\n-----END CERTIFICATE REQUEST-----'),
+    ('user44@wifi.local', E'-----BEGIN CERTIFICATE REQUEST-----\nMIIBBjCBrQIBADAcMRowGAYDVQQDDBF1c2VyNDRAd2lmaS5sb2NhbDBZMBMGByqG\nSM49AgEGCCqGSM49AwEHA0IABNkaB1Xq9jh3md1rQkBKUXwzUM5/fIENPODh3ygJ\nVmjBO4Yi8W2JJUbNbovf8G8KQW8u9VomJG2pQGe+9rmxQz6gLzAtBgkqhkiG9w0B\nCQ4xIDAeMBwGA1UdEQQVMBOBEXVzZXI0NEB3aWZpLmxvY2FsMAoGCCqGSM49BAMC\nA0gAMEUCIFvbPrm71R3VE1wh9OduzUU/plYWhXrl65SttDD3/ClQAiEAzmeWQvLX\nEsyJq/yY3vD2XY52JCdORUeZdjltl1ibxqU=\n-----END CERTIFICATE REQUEST-----'),
+    ('user45@wifi.local', E'-----BEGIN CERTIFICATE REQUEST-----\nMIIBBjCBrQIBADAcMRowGAYDVQQDDBF1c2VyNDVAd2lmaS5sb2NhbDBZMBMGByqG\nSM49AgEGCCqGSM49AwEHA0IABJJf+JbIZQucrjpz+3BLlwyLCbb2FKcFwK60inKn\nGuQ3I0iwRS3bSoGQRSogYkLcItI+QTe14eughruEUtd9JBigLzAtBgkqhkiG9w0B\nCQ4xIDAeMBwGA1UdEQQVMBOBEXVzZXI0NUB3aWZpLmxvY2FsMAoGCCqGSM49BAMC\nA0gAMEUCIEOsk4Yaa9zmd7APFO5rnxJAn56xvNeihHmKTGThE29WAiEA4qoK30el\nYhRBqV5h1C6AE+3agBbQ2euA87fy0ui6RjA=\n-----END CERTIFICATE REQUEST-----')
+       ) AS v(username, csr)
+WHERE  v.username = (SELECT d.username FROM devices d WHERE d.id = r.device_id);
