@@ -102,6 +102,11 @@ nav:
           - Настройка: ad-logon/setup.md
           - Вход по RDP: ad-logon/rdp.md
           - Пределы и нюансы: ad-logon/caveats.md
+      - Доступ к Kubernetes:
+          - Обзор: k8s/index.md
+          - Настройка: k8s/setup.md
+          - Два режима доставки credential: k8s/delivery.md
+          - Нюансы и пределы: k8s/caveats.md
       - Приёмники (haproxy, nginx, OpenVPN): relying-parties.md
   - Справочник и эксплуатация:
       - REST API: api.md

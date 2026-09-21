@@ -81,6 +81,10 @@ docker compose -f docker-compose.selfhosted.yml cp \
 | `vpn` | `pki_vpn` | `vpn` |
 | `ssh` | движок `ssh-client-signer` | `ssh-user` |
 
+Цепочку из `pki_k8s` понадобится отдать ещё и самому кластеру Kubernetes —
+как именно, описано в разделе
+[«Доступ к Kubernetes»](k8s/setup.md#шаг-1-научите-кластер-доверять-цепочке-alatyr).
+
 `ad_logon` в этом списке нет и быть не может: доменный вход по карте требует
 расширения SID (KB5014754), которого Vault PKI не выпускает в принципе — эта
 цель работает только через SCEP/ADCS. Как направить её в ваш ADCS — [Вход в
