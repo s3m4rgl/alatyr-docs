@@ -122,7 +122,8 @@ helm upgrade --install alatyr charts/alatyr \
 | --- | --- |
 | [`docs/`](docs/) | Исходники документации (MkDocs Material), публикуются на GitHub Pages |
 | [`charts/alatyr/`](charts/alatyr/) | Helm-чарт для Kubernetes |
-| [`docker-compose.yml`](docker-compose.yml) | Рабочее развёртывание через Docker Compose |
+| [`docker-compose.yml`](docker-compose.yml) | Рабочее развёртывание через Docker Compose. **Ожидает уже настроенный внешний Vault.** |
+| [`docker-compose.selfhosted.yml`](docker-compose.selfhosted.yml) | Рабочее развёртывание **со встроенным удостоверяющим центром**: Vault с файловым хранилищем, переживающий перезапуск. Свой Vault не нужен. Разбор — [`docs/selfhosted-ca.md`](docs/selfhosted-ca.md) |
 | [`docker-compose.demo.yml`](docker-compose.demo.yml) | Демонстрационный стенд одной командой |
 | [`docker-compose.dev.yml`](docker-compose.dev.yml) | Инфраструктура отдельно: PostgreSQL, Vault в dev-режиме, Keycloak; сервер и интерфейс — профилем `app` |
 | [`.env.example`](.env.example) | Все переменные окружения сервера с пояснениями |

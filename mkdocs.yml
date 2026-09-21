@@ -61,6 +61,7 @@ nav:
       - Лицензирование: licensing.md
   - Развёртывание и настройка:
       - Установка: installation.md
+      - Встроенный УЦ: selfhosted-ca.md
       - Конфигурация: configuration.md
   - Администрирование:
       - Управление и роли: administration.md

@@ -97,6 +97,7 @@ Kubernetes. Оба варианта описаны ниже.
 | [`docker-compose.yml`](https://github.com/s3m4rgl/alatyr-docs/blob/main/docker-compose.yml) | «Production-shaped» стек: PostgreSQL + сервер + UI. Ожидает уже настроенный внешний Vault (и, опционально, Keycloak) — сам их не поднимает. |
 | [`docker-compose.demo.yml`](https://github.com/s3m4rgl/alatyr-docs/blob/main/docker-compose.demo.yml) | Turnkey-демо: одна команда, ничего настраивать не нужно. Поднимает PostgreSQL, Vault (dev-режим), сервер, UI и наполняет БД тестовыми данными. |
 | [`docker-compose.dev.yml`](https://github.com/s3m4rgl/alatyr-docs/blob/main/docker-compose.dev.yml) | Только dev-инфраструктура (PostgreSQL + Vault dev + Keycloak) — сервер и фронтенд предполагается запускать локально, либо в Docker через `--profile app`. |
+| [`docker-compose.selfhosted.yml`](https://github.com/s3m4rgl/alatyr-docs/blob/main/docker-compose.selfhosted.yml) | **Встроенный УЦ.** PostgreSQL + Vault с файловым хранилищем (не `-dev`) + сервер + UI. Корневой ключ переживает перезапуск, свой Vault не нужен. Это путь для тех, у кого Vault ещё нет. Подробно — [встроенный УЦ](selfhosted-ca.md). |
 
 #### `docker-compose.yml` — самостоятельный хостинг
 
