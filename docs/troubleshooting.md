@@ -98,7 +98,7 @@
 chars) when ALATYR_WEBHOOKS_ENABLED=true`, `ALATYR_SCEP_URL is required when
 ALATYR_ISSUER=scep`. Сообщение всегда называет конкретную переменную и
 условие — читайте его буквально, это не generic-ошибка. См.
-[Конфигурация](configuration.md#валидация-при-старте).
+[Конфигурация](configuration.md#проверки-при-старте).
 
 ### 5. Метрики
 
