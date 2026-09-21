@@ -4,8 +4,8 @@
 отдельно на время пилота не хочется. Стек поднимает УЦ внутри себя — но
 настоящий, а не демонстрационный.
 
-Файл: [`docker-compose.selfhosted.yml`](../docker-compose.selfhosted.yml).
-Служебный контейнер: [`vault-bootstrap.sh`](../vault-bootstrap.sh).
+Файл: [`docker-compose.selfhosted.yml`](https://github.com/s3m4rgl/alatyr-docs/blob/main/docker-compose.selfhosted.yml).
+Служебный контейнер: [`vault-bootstrap.sh`](https://github.com/s3m4rgl/alatyr-docs/blob/main/vault-bootstrap.sh).
 
 ## Какой из трёх файлов брать
 
@@ -39,7 +39,7 @@ docker compose -f docker-compose.selfhosted.yml up -d
 
 Сервер и админка поднимаются из **готовых образов** — собирать у себя нечего.
 Откуда их взять (реестр или файлы бандла) и что ещё входит в поставку —
-[`DELIVERY.md`](DELIVERY.md). Сборка из исходников доступна накладкой
+[«Установка»](installation.md). Сборка из исходников доступна накладкой
 `-f docker-compose.build.yml` и нужна только разработчику.
 
 `ALATYR_PKI_ALLOWED_DOMAINS` обязателен, и отказ при его отсутствии намеренный.
@@ -98,8 +98,7 @@ docker compose -f docker-compose.selfhosted.yml cp \
 является годной заменой пользовательскому.
 
 Замеры на живых nginx, haproxy и Keycloak, а также рецепты настройки приёмника:
-[`MTLS-RELYING-PARTY.md`](MTLS-RELYING-PARTY.md) и
-[`KEYCLOAK-X509-SSO.md`](KEYCLOAK-X509-SSO.md).
+[«Проверяющие стороны»](relying-parties.md).
 
 ## Что проверено прогоном
 
@@ -159,7 +158,7 @@ docker compose -f docker-compose.selfhosted.yml start
 4. **Старый корень не выключать, пока живы выданные им сертификаты.** Их
    проверяют по цепочке, а цепочка ведёт к нему; выключенный УЦ ещё и перестаёт
    публиковать список отзыва, то есть приёмник, настроенный на CRL, начнёт
-   отвергать всех (замеры — [`MTLS-RELYING-PARTY.md`](MTLS-RELYING-PARTY.md)).
+   отвергать всех (замеры — [«Проверяющие стороны»](relying-parties.md)).
 
 ## Чего эта поставка не делает
 
