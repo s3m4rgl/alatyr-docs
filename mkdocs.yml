@@ -73,6 +73,11 @@ nav:
           - Нюансы и пределы: ssh/caveats.md
           - Совмещение с FreeIPA: ssh/freeipa.md
           - Реестр ключей и Keyholder API: ssh/registry.md
+      - Вход в домен по смарт-карте:
+          - Обзор: ad-logon/index.md
+          - Настройка: ad-logon/setup.md
+          - Вход по RDP: ad-logon/rdp.md
+          - Пределы и нюансы: ad-logon/caveats.md
       - Приёмники (haproxy, nginx, OpenVPN): relying-parties.md
   - Справочник и эксплуатация:
       - REST API: api.md
