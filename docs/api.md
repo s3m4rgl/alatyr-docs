@@ -130,6 +130,10 @@ Registry и Keyholder API отдельно — в [реестре ключей](
 | `POST /api/v1/admin/networks/{id}/restore` | Восстановить ранее отключённую сеть |
 | `PUT /api/v1/admin/networks/{id}/agent-profile-disabled` | Переключатель opt-out агентского профиля для Windows/Linux |
 | `PUT /api/v1/admin/networks/{id}/macos-agent-profile-disabled` | Переключатель opt-out MDM-профиля агента для macOS |
+| `PUT /api/v1/admin/networks/{id}/radius-server-names` | Имена RADIUS-сервера для этой сети; пустой массив означает, что имя не проверяется |
+
+Что означают эти настройки и как их задают в админке — [Wi-Fi и проводной
+802.1X](wifi/index.md).
 
 ## Admin — пользователи
 

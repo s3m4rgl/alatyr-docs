@@ -66,6 +66,12 @@ nav:
   - Администрирование:
       - Управление и роли: administration.md
       - Агенты: agents.md
+      - Wi-Fi и проводной 802.1X:
+          - Обзор: wifi/index.md
+          - Настройка сети: wifi/setup.md
+          - Имя RADIUS-сервера: wifi/server-name.md
+          - Сторона RADIUS: wifi/radius.md
+          - Нюансы и пределы: wifi/caveats.md
       - SSH-доступ:
           - Обзор: ssh/index.md
           - Настройка: ssh/setup.md

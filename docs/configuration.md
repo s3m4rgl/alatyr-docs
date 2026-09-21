@@ -65,7 +65,7 @@
 |---|---|---|---|
 | `ALATYR_REMOTE_LOGS_ENABLED` | `false` | нет | Включить сбор логов с устройств по запросу (on-demand device-log collection). |
 | `ALATYR_PLACEHOLDER_CONTINUITY_MERGE_ENABLED` | `false` | нет | Opt-in: разрешить устройству с placeholder-серийным номером повторно привязаться к своей прежней строке `devices` по `continuity_key`, избегая расхода нового license-слота при переустановке. См. пояснение ниже. |
-| `ALATYR_MACOS_AGENT_PROFILE_DISABLED` | `false` | нет | Не отдавать macOS Wi-Fi/wired `.mobileconfig` в ответе агенту (агент пропускает собственную установку профиля). Включайте, когда macOS-профили раскатываются через MDM. На admin-bundle ZIP не влияет. |
+| `ALATYR_MACOS_AGENT_PROFILE_DISABLED` | `false` | нет | Не отдавать macOS Wi-Fi/wired `.mobileconfig` в ответе агенту (агент пропускает собственную установку профиля). Включайте, когда macOS-профили раскатываются через MDM. На admin-bundle ZIP не влияет. Переключатели на отдельные сети — [Кто ставит профиль](wifi/setup.md#agent-profile-disabled). |
 | `ALATYR_WEBHOOKS_ENABLED` | `false` | нет | Включить исходящие вебхуки (эндпоинты, подписанная доставка, воркер). |
 | `ALATYR_WEBHOOK_ENC_KEY` 🔒 | — | условно | AES-256 ключ (64 hex-символа) для шифрования секретов вебхуков at rest. **Обязателен**, когда вебхуки включены — сервер падает при старте, если ключ отсутствует или не декодируется в ровно 32 байта. |
 | `ALATYR_WEBHOOK_POLL_SECONDS` | `10` | нет | Интервал опроса очереди доставки вебхуков, секунды. |
