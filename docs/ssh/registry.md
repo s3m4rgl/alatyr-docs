@@ -41,7 +41,7 @@
   "device_serial": "...",
   "enrollment_token": "...",
   "principal": "ivan.petrov",
-  "ssh_public_key": "ssh-ed25519 AAAA... alatyr-agent",
+  "ssh_public_key": "ecdsa-sha2-nistp256 AAAAE2VjZHNh... alatyr-agent",
   "proof": { "...": "TPM2 AK-to-EK proof-of-possession, если применимо" }
 }
 ```
@@ -149,8 +149,16 @@ allowlist'ом по IP, а не ролями. Эндпоинт `GET
 
 ```
 GET /api/v1/keyholder/keys?principal=ivan.petrov
-→ {"keys": ["ssh-ed25519 AAAA...", "ssh-ed25519 BBBB..."]}
+→ {"keys": ["ecdsa-sha2-nistp256 AAAAE2VjZHNh...", "ecdsa-sha2-nistp256 AAAAE2VjZHNi..."]}
 ```
+
+!!! warning "Тип ключа — не `ssh-…`"
+    Ключи, которые заводит агент в TPM и Secure Enclave, начинаются с
+    `ecdsa-sha2-nistp256`. Реестр принимает и другие типы (например
+    `sk-ssh-ed25519@openssh.com` у аппаратных токенов FIDO2), поэтому разбирать
+    ответ поиском подстроки `ssh-` нельзя: самодельный фильтр такого вида не
+    найдёт ни одного ключа и закроет вход, не объяснив причины. Разбирайте
+    JSON целиком — [пример в настройке](setup.md#шаг-5-настройте-ваш-сервер).
 
 Возвращаются только ключи в статусе `active`. Для неизвестного принципала
 эндпоинт отвечает `200` и пустым массивом, **никогда не `404`** — иначе
