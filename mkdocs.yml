@@ -66,8 +66,13 @@ nav:
   - Администрирование:
       - Управление и роли: administration.md
       - Агенты: agents.md
-      - Настройка SSH-доступа: ssh-setup.md
-      - SSH Key Registry: ssh-keys.md
+      - SSH-доступ:
+          - Обзор: ssh/index.md
+          - Настройка: ssh/setup.md
+          - Отзыв доступа: ssh/revocation.md
+          - Нюансы и пределы: ssh/caveats.md
+          - Совмещение с FreeIPA: ssh/freeipa.md
+          - Реестр ключей и Keyholder API: ssh/registry.md
       - Приёмники (haproxy, nginx, OpenVPN): relying-parties.md
   - Справочник и эксплуатация:
       - REST API: api.md

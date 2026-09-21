@@ -4,7 +4,7 @@
 метод, путь и одна строка назначения. За ролевой матрицей доступа и
 подробным разбором ключевых потоков (approve/reject/revoke, сервисные
 аккаунты, сети) — в [Администрирование](administration.md); за SSH Key
-Registry и Keyholder API отдельно — в [SSH Key Registry](ssh-keys.md).
+Registry и Keyholder API отдельно — в [реестре ключей](ssh/registry.md).
 
 Базовый префикс — `/api/v1` (кроме `GET /health`). Формат ответа — JSON
 (кроме `GET /api/v1/ssh/krl`, отдающего бинарный OpenSSH KRL-файл, и
@@ -28,7 +28,7 @@ Registry и Keyholder API отдельно — в [SSH Key Registry](ssh-keys.md
   `POST /api/v1/requests/{id}/checkin`, `/logs` — заголовок
   `X-Agent-Secret`, выданный при `/enroll`.
 - `GET /api/v1/keyholder/keys` — IP-allowlist + rate-limit + опциональный
-  токен (см. [SSH Key Registry](ssh-keys.md)).
+  токен (см. [реестре ключей](ssh/registry.md)).
 
 ## Аутентификация и сессия (`auth`)
 
@@ -65,7 +65,7 @@ Registry и Keyholder API отдельно — в [SSH Key Registry](ssh-keys.md
 
 ## SSH-ключи (`ssh-keys`)
 
-Подробности модели — в [SSH Key Registry](ssh-keys.md).
+Подробности модели — в [реестре ключей](ssh/registry.md).
 
 | Метод и путь | Назначение |
 |---|---|

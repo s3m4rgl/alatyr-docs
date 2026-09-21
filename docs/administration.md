@@ -41,7 +41,7 @@
 | Заявки (Requests) | + `cert-auto-approver` (только список и check-conflicts) | approve — `cert-admin`/`cert-approver`/`cert-auto-approver`; reject — `cert-admin` |
 | Устройства (Devices), логи устройств | `cert-admin`/`cert-approver`/`cert-viewer` | request/cancel/delete логов, revoke enrollment-token, revoke/unblock устройства — `cert-admin` |
 | Сертификаты | `cert-admin`/`cert-approver`/`cert-viewer` (bundle) | revoke сертификата — `cert-admin` |
-| SSH Keys | `cert-admin`/`cert-approver`/`cert-viewer` | approve/reject/revoke — `cert-admin`; см. [SSH Key Registry](ssh-keys.md) |
+| SSH Keys | `cert-admin`/`cert-approver`/`cert-viewer` | approve/reject/revoke — `cert-admin`; см. [реестре ключей](ssh/registry.md) |
 | Аудит | `cert-admin`/`cert-approver`/`cert-viewer` | — (аудит только читается) |
 | Пользователи и роли | `cert-admin` | `cert-admin` |
 | Сети (Wi-Fi/802.1X) | `cert-admin`/`cert-approver`/`cert-viewer` | `cert-admin` |
@@ -236,7 +236,7 @@ admin-роль, запись — только `cert-admin`). Каждое изм
     то же самое уже верно для отзыва сертификата на уровне устройства.
     Также блокировка не останавливает уже выданные SSH-ключи из SSH Key
     Registry — см. предупреждение на странице [SSH Key
-    Registry](ssh-keys.md).
+    Registry](ssh/registry.md).
 
     Для флота с TPM этот обход закрывается включением
     `TPM_REJECT_UNATTESTED` / `TPM_REQUIRE_AK_CERTIFY` — заявленный серийный
