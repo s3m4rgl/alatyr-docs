@@ -66,6 +66,7 @@ nav:
   - Администрирование:
       - Управление и роли: administration.md
       - Агенты: agents.md
+      - Настройка SSH-доступа: ssh-setup.md
       - SSH Key Registry: ssh-keys.md
       - Приёмники (haproxy, nginx, OpenVPN): relying-parties.md
   - Справочник и эксплуатация:
