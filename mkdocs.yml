@@ -24,6 +24,19 @@ theme:
     - content.code.copy
     - search.suggest
 
+# Битые ЯКОРЯ strict-сборка по умолчанию пропускает: в MkDocs 1.6
+# validation.links.anchors стоит на `info`, то есть ссылка вида
+# `setup.md#несуществующий-якорь` молча собирается. Проверено опытом:
+# заведомо битый якорь прошёл `mkdocs build --strict`, а с `warn` — уронил
+# сборку. Русские заголовки делают ошибку особенно лёгкой: MkDocs их не
+# транслитерирует, и латинская форма якоря выглядит правдоподобно, но ведёт
+# в никуда.
+validation:
+  links:
+    anchors: warn
+    absolute_links: info
+    unrecognized_links: warn
+
 markdown_extensions:
   - admonition
   - pymdownx.details
@@ -66,6 +79,11 @@ nav:
   - Администрирование:
       - Управление и роли: administration.md
       - Агенты: agents.md
+      - mTLS пользователя:
+          - Обзор: mtls/index.md
+          - Настройка: mtls/setup.md
+          - Отзыв доступа: mtls/revocation.md
+          - Нюансы и пределы: mtls/caveats.md
       - SSH-доступ:
           - Обзор: ssh/index.md
           - Настройка: ssh/setup.md
