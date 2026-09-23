@@ -98,7 +98,7 @@ curl -s http://localhost:8090/api/v1/version
 ## Сервер
 
 !!! tip "Пилот: набор развёртывания из выпуска"
-    Начиная с **v1.5.4** каждый [выпуск](https://github.com/s3m4rgl/alatyr-docs/releases)
+    Начиная с **[v1.5.5](https://github.com/s3m4rgl/alatyr-docs/releases/tag/v1.5.5)** каждый [выпуск](https://github.com/s3m4rgl/alatyr-docs/releases)
     несёт архив `alatyr-deploy-<версия>.tar.gz`: Docker Compose со встроенным
     корневым и промежуточными УЦ, сценарий `first-up.sh`, который придумывает
     все секреты и печатает их одним блоком (адрес админки, логин и пароль
