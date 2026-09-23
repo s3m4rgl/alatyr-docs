@@ -233,7 +233,7 @@ sudo alatyr-agent install-reader --purpose ad_logon
 Саму карту поднимает агент — вручную ничего запускать не нужно. Проверить:
 
 ```bash
-opensc-tool -l     # ожидание: Alatyr Virtual Smart Card Reader … Yes
+opensc-tool -l     # ожидание: Alatyr Smart Card Reader … Yes
 ```
 
 `Yes` в колонке `Card` означает, что карта в считывателе.
@@ -274,7 +274,7 @@ otool -L /path/to/libwinpr3.*.dylib | grep krb5   # пусто = карточн�
 ```bash
 KRB5_CONFIG=<ваш krb5.conf> <ваш собранный клиент> \
   /v:<машина>.<домен> /d:<домен> /u:<логин> /sec:nla \
-  "/smartcard-logon:reader:Alatyr Virtual Smart Card Reader" \
+  "/smartcard-logon:reader:Alatyr Smart Card Reader" \
   "/kerberos:pkinit-anchors:FILE:<цепочка-УЦ>.pem,pkcs11-module:/opt/homebrew/lib/opensc-pkcs11.so"
 ```
 
