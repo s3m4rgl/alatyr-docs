@@ -56,7 +56,7 @@ freeradius -XC          # Configuration appears to be OK
 
 ### Чего этот параметр не чинит
 
-На стенде наблюдался перемежающийся отказ Windows с `recv TLS 1.2 Alert,
+При проверке наблюдался перемежающийся отказ Windows с `recv TLS 1.2 Alert,
 fatal illegal_parameter` после получения полной цепочки. Парный замер
 показал, что `fragment_size` к нему отношения не имеет:
 

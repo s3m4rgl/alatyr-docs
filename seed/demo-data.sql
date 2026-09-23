@@ -1,4 +1,4 @@
--- НАСТОЯЩИЕ CSR, А НЕ ЗАГЛУШКИ (GitLab dexion #890).
+-- НАСТОЯЩИЕ CSR, А НЕ ЗАГЛУШКИ.
 --
 -- Здесь стояло `'-----BEGIN CERTIFICATE REQUEST-----\nSEED-FAKE-CSR\n-----END …'`
 -- в ОБЫЧНЫХ кавычках, то есть `\n` попадал в базу обратным слэшем и буквой, а
@@ -47,8 +47,8 @@ BEGIN;
 
 -- ── purge previous seed (FK-safe order) ──────────────────────────────────────
 -- audit_log is intentionally NOT purged here: migration 034 made it
--- append-only at the DB level (trigger-enforced, no bypass by design --
--- dexion #40) specifically so nothing, including this script, can delete
+-- append-only at the DB level (trigger-enforced, no bypass by design)
+-- specifically so nothing, including this script, can delete
 -- rows. Re-running this script accumulates additional seed@wifi.local
 -- audit rows rather than resetting them -- consistent with audit_log's own
 -- append-only contract, and harmless for local dev.
@@ -101,7 +101,7 @@ SELECT
     b.status,
     E'-----BEGIN CERTIFICATE REQUEST-----\nMIHZMIGAAgEAMB4xHDAaBgNVBAMME2RlbW9AYWxhdHlyLmV4YW1wbGUwWTATBgcq\nhkjOPQIBBggqhkjOPQMBBwNCAATtcCWwl4xtQtA4peRpvIHIrrFdFnlSUaWwqHjn\nhgOYLM3r00LagoRRUTABjTyLIlKxlIXaKaaZGLS0ZtFjiu2AoAAwCgYIKoZIzj0E\nAwIDSAAwRQIhAL2Nv4yu/Z+C14lfGvYG2dCxLTC3JqfEcBiPm6ApzCj7AiBxamD3\nQz7rIoXj4WST0Bq0XrbxIMR5A0t2z9xEzkQq3w==\n-----END CERTIFICATE REQUEST-----',
     '{"platform":"tpm2"}'::jsonb,
-    -- `pending` получает вердикт НАРАВНЕ с остальными (GitLab dexion #890).
+    -- `pending` получает вердикт НАРАВНЕ с остальными.
     --
     -- Раньше здесь стояло только ('installed','installing','approved'), то есть
     -- у заявок в ожидании вердикта не было вовсе. На ступени `required` сервер
@@ -324,7 +324,7 @@ FROM (VALUES
      'ssh-ed25519-cert-v01@openssh.com SEEDFAKEsshCERTbase64material==',
      NOW() + '90 days'::interval, NULL, NULL,
      NOW() - '6 days'::interval, NOW() - '5 days'::interval),
-    -- k8s: installed -- a live kubectl credential (GitLab dexion #162).
+    -- k8s: installed -- a live kubectl credential.
     -- expires_at is deliberately HOURS away, not years: the k8s purpose is
     -- 12h by design because a Kubernetes API server performs no revocation
     -- check, so expiry is the only control that withdraws access. Seed data
@@ -442,7 +442,7 @@ UPDATE cert_requests SET attest_result = attest_result || '{"ak_verified": true}
 WHERE device_id IN (SELECT id FROM devices WHERE serial_number IN ('SEED-0019', 'SEED-0020'))
   AND attest_result IS NOT NULL;
 
--- ДОКАЗАТЕЛЬСТВО РЕЗИДЕНТНОСТИ КЛЮЧА — ЗАЯВКАМ В ОЖИДАНИИ (GitLab dexion #890).
+-- ДОКАЗАТЕЛЬСТВО РЕЗИДЕНТНОСТИ КЛЮЧА — ЗАЯВКАМ В ОЖИДАНИИ.
 --
 -- Без него одобрение упирается в следующую ступень: `device did not prove its
 -- private key is resident in a TPM or Secure Enclave`. Ступень правильная, а
@@ -458,7 +458,7 @@ SET    attest_result = r.attest_result
        -- ПЛАТФОРМА ЖИВЁТ ВНУТРИ ВЕРДИКТА, а не только в соседней колонке
        -- `attestation`. `IsHardwareAttested()` разбирает `attest_result.platform`
        -- ПО ИЗВЕСТНЫМ значениям, и неизвестное (в том числе отсутствующее) даёт
-       -- false — это защита от «строка клиента выключает проверку» (#371).
+       -- false — это защита от «строка клиента выключает проверку».
        -- Без этого поля вердикт с level=hardware и ak_verified=true всё равно
        -- читался как «доказательств нет», и одобрение отказывало.
        || jsonb_build_object('platform',
@@ -469,7 +469,7 @@ WHERE  d.id = r.device_id
   AND  r.attest_result IS NOT NULL
   AND  r.attest_result->>'level' IN ('full', 'hardware');
 
--- ЦЕЛИ НАЗНАЧЕНЫ УСТРОЙСТВАМ (GitLab dexion #890).
+-- ЦЕЛИ НАЗНАЧЕНЫ УСТРОЙСТВАМ.
 --
 -- Пятая и последняя стена демонстрации: сервер отвечал
 -- `device is not assigned the purpose wifi`. Таблица `device_purposes` была
@@ -603,7 +603,7 @@ FROM webhook_endpoints WHERE name = 'SEED-Slack-Alerts';
 --    enabled state -- Settings→Issuers currently shows all 4 purposes as
 --    "no profile, env fallback" without this. Upsert (singleton per
 --    purpose), not purged.
--- РОЛЬ VAULT НАЗВАНА ТАК ЖЕ, КАК ЕЁ ЗАВОДИТ vault-init (GitLab dexion #890).
+-- РОЛЬ VAULT НАЗВАНА ТАК ЖЕ, КАК ЕЁ ЗАВОДИТ vault-init.
 --
 -- У цели `wifi` здесь стояло `wifi-cert` — имя ДО переименования продукта в
 -- Alatyr. Демонстрационный vault-init заводит роли `alatyr`, `user-mtls` и
@@ -738,7 +738,7 @@ FROM cert_requests
 WHERE device_id IN (SELECT id FROM devices WHERE serial_number LIKE 'SEED-%')
 GROUP BY purpose, status ORDER BY purpose, status;
 
--- ЛИЧНОСТЬ В CSR ДОЛЖНА СОВПАДАТЬ С ЗАЯВЛЕННОЙ (GitLab dexion #890).
+-- ЛИЧНОСТЬ В CSR ДОЛЖНА СОВПАДАТЬ С ЗАЯВЛЕННОЙ.
 --
 -- Одного настоящего CSR на все строки НЕ хватило: сервер сверяет личность
 -- внутри CSR с личностью устройства и отвечает

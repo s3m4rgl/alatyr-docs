@@ -391,12 +391,12 @@ kubectl -n alatyr logs deploy/alatyr-server | grep -i vault
     ставить агента без одного из двух параметров; у пакетов `deb`/`rpm`
     задать их нужно самому — см. ниже.
 
-**Где взять пакеты.** Готовые пакеты для **Linux и Windows** лежат в разделе
-[Releases этого
+**Где взять пакеты.** Готовые пакеты для **Windows, macOS и Linux** лежат в
+разделе [Releases этого
 репозитория](https://github.com/s3m4rgl/alatyr-docs/releases) — возьмите файл
-своей платформы из последнего выпуска. Для **macOS** готового пакета не
-поставляется: его собирает и подписывает сама организация под свою учётную
-запись Apple Developer, см. [раздел про macOS](#macos).
+своей платформы из последнего выпуска. Пакет macOS начиная с v1.5.5
+подписан и нотаризован Apple; адрес сервера в него не вшит и задаётся при
+установке, см. [раздел про macOS](#macos).
 
 <a id="linux"></a>
 ### Linux
@@ -535,11 +535,67 @@ sudo /usr/local/bin/alatyr-agent status
     Enclave держит системный процесс `secd`, а он есть только в такой сессии.
     Это свойство платформы, а не недоработка.
 
-#### Шаг 1. Соберите и подпишите пакет своей учётной записью Apple
+#### Шаг 1. Возьмите пакет из выпуска
 
-Готового бинарного пакета для macOS не поставляется: идентичность
-привязывается к расширению CryptoTokenKit внутри приложения, а оно должно
-быть подписано **вашим собственным** Developer ID и нотаризовано Apple.
+`alatyr-agent-<версия>.pkg` из [выпуска](https://github.com/s3m4rgl/alatyr-docs/releases)
+подписан Developer ID и нотаризован Apple. Проверить это до установки:
+
+```bash
+spctl -a -vvv -t install alatyr-agent-<версия>.pkg
+# alatyr-agent-<версия>.pkg: accepted
+# source=Notarized Developer ID
+```
+
+Пакет требует macOS 12 или новее. Адрес сервера в пакет **не вшит**: без
+него агент встаёт ненастроенным и к серверу не обращается, о чём пишет в
+свой журнал.
+
+#### Шаг 2. Поставьте пакет вместе с параметрами
+
+Штатный `installer` в macOS не умеет передавать параметры пакету, поэтому
+они кладутся заранее в файл предварительных значений
+`/Library/Application Support/AlatyrAgent/config.env.preseed`. Сценарий
+установки пакета читает его (только если владелец файла — `root`),
+применяет и удаляет. Скопируйте блок целиком, подставив свои значения:
+
+```bash
+PKG=./alatyr-agent-1.5.5.pkg
+SERVER=https://alatyr.your-domain.example
+CORP_DOMAIN=your-domain.example
+CORP_EMAIL=user@your-domain.example   # можно оставить пустым — тогда <логин>@CORP_DOMAIN
+
+sudo mkdir -p "/Library/Application Support/AlatyrAgent"
+printf 'WIFI_CERT_SERVER="%s"\nCORP_DOMAIN="%s"\nCORP_EMAIL="%s"\n' \
+    "$SERVER" "$CORP_DOMAIN" "$CORP_EMAIL" |
+  sudo tee "/Library/Application Support/AlatyrAgent/config.env.preseed" >/dev/null
+sudo chmod 600 "/Library/Application Support/AlatyrAgent/config.env.preseed"
+sudo installer -pkg "$PKG" -target /
+```
+
+Имя ключа `WIFI_CERT_SERVER` — историческое, это адрес сервера Alatyr.
+Через MDM (например, FleetDM: Software → Add Software) делается то же самое:
+сценарий до установки кладёт этот файл, затем ставится пакет.
+
+!!! danger "Почту нельзя передать переменной окружения установщика"
+    `installer` в macOS не пробрасывает переменные окружения в
+    postinstall-скрипт: `sudo CORP_EMAIL=x installer -pkg …` **не работает**
+    и молча откатывается на автоопределение
+    (`<короткое имя>@<корпоративный домен>` либо атрибут из каталога, если Mac
+    включён в домен). Задавайте почту только файлом предварительных значений.
+
+**Результат.** `launchctl list | grep semargl` показывает загруженный
+`LaunchAgent`, а команда
+
+```bash
+/Applications/alatyr-agent.app/Contents/MacOS/alatyr-agent status
+```
+
+печатает состояние. Журнал агента — `~/Library/Logs/AlatyrAgent/agent.log`.
+
+#### Для разработчиков: сборка пакета своей подписью
+
+Нужна, только если организация хочет подписать агента **своим**
+Developer ID вместо поставляемого пакета.
 
 1. Разово создайте в учётной записи Apple Developer вашей организации
    сертификаты **Developer ID Application** (подпись приложения) и
@@ -551,31 +607,7 @@ sudo /usr/local/bin/alatyr-agent status
    серверы Apple есть `SKIP_NOTARIZE=1`.
 
 **Результат.** В каталоге `dist/` лежит `.pkg`, и `spctl -a -vvv -t install`
-на нём отвечает `accepted`.
-
-#### Шаг 2. Раскатайте пакет
-
-Через MDM (например, FleetDM: Software → Add Software → выбрать устройства →
-Install) либо вручную на конкретной машине:
-
-```bash
-sudo bash install-pkg.sh \
-    --pkg dist/alatyr-agent-<версия>.pkg \
-    --server https://alatyr.your-domain.example \
-    --corp-domain your-domain.example \
-    --corp-email user@your-domain.example
-```
-
-!!! danger "Почту нельзя передать переменной окружения установщика"
-    `installer` в macOS не пробрасывает переменные окружения в
-    postinstall-скрипт: `sudo CORP_EMAIL=x installer -pkg …` **не работает**
-    и молча откатывается на автоопределение
-    (`<короткое имя>@<корпоративный домен>` либо атрибут из каталога, если Mac
-    включён в домен). Задавайте почту только через `install-pkg.sh
-    --corp-email` или файлом предварительных значений.
-
-**Результат.** `launchctl list | grep semargl` показывает загруженный
-`LaunchAgent`, а `alatyr-agent status` печатает состояние.
+на нём отвечает `accepted`. Ставится он так же, как в шаге 2.
 
 ### Windows
 

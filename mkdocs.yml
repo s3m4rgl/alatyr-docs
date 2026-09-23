@@ -65,6 +65,7 @@ extra_javascript:
 
 nav:
   - Обзор: index.md
+  - "Пилот: с чего начать": pilot.md
   - Сценарии применения: use-cases.md
   - Знакомство с продуктом:
       - Архитектура и PKI: architecture.md
