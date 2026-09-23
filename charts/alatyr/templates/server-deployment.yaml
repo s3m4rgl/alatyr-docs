@@ -1,0 +1,184 @@
+{{- include "alatyr.validate" . }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "chart.fullname" . }}-server
+  namespace: {{ .Values.namespace }}
+  labels:
+    app.kubernetes.io/component: server
+    {{- include "chart.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.server.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: server
+      {{- include "chart.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: server
+        {{- include "chart.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if eq .Values.postgres.mode "embedded" }}
+      # Ожидание базы ПЕРЕД стартом сервера.
+      #
+      # Без него первый запуск наблюдался так: под падает с «failed to connect
+      # to database», рестартует трижды и только потом поднимается. Итог тот
+      # же, но в журнале лежит фатальная ошибка, которой не было — и оператор,
+      # разбирающий настоящую поломку, тратит время на неё.
+      #
+      # Только для embedded: адрес внешней базы приходит строкой подключения
+      # из Secret, и разбирать её здесь значило бы завести второе место, где
+      # она может разойтись с первым.
+      initContainers:
+        - name: wait-for-postgres
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              until nc -z {{ include "chart.fullname" . }}-postgres 5432; do
+                echo "жду postgres"; sleep 2
+              done
+      {{- end }}
+      containers:
+        - name: server
+          image: "{{ .Values.image.server }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - containerPort: 8090
+          env:
+            - name: ALATYR_SERVER_PORT
+              value: "8090"
+
+            {{- if eq .Values.postgres.mode "external" }}
+            # Строка подключения целиком приходит из Secret: в ней пароль, и
+            # собирать её в манифесте значит положить пароль в `kubectl get`.
+            - name: ALATYR_DB_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.existingSecret }}
+                  key: database-url
+            {{- else }}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.existingSecret }}
+                  key: postgres-password
+            # $(POSTGRES_PASSWORD) подставляется текстово и только если
+            # переменная объявлена ВЫШЕ по списку — см. строку над этой.
+            - name: ALATYR_DB_URL
+              value: "postgres://{{ .Values.postgres.user }}:$(POSTGRES_PASSWORD)@{{ include "chart.fullname" . }}-postgres:5432/{{ .Values.postgres.db }}?sslmode=disable"
+            {{- end }}
+
+            - name: ALATYR_LOG_LEVEL
+              value: {{ .Values.server.logLevel | quote }}
+            - name: ALATYR_CORS_ORIGINS
+              value: {{ .Values.server.corsOrigins | quote }}
+            {{- if .Values.server.trustedProxies }}
+            - name: ALATYR_TRUSTED_PROXIES
+              value: {{ .Values.server.trustedProxies | quote }}
+            {{- end }}
+            # Режим разработки в продовом чарте не предусмотрен: он раздаёт
+            # права cert-admin по строке 'Bearer dev-token'.
+            - name: ALATYR_DEV_MODE
+              value: "false"
+
+            - name: ALATYR_LOCAL_AUTH_ENABLED
+              value: "true"
+            - name: ALATYR_LOCAL_JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.existingSecret }}
+                  key: local-jwt-secret
+            - name: ALATYR_LOCAL_ADMIN_EMAIL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.existingSecret }}
+                  key: local-admin-email
+                  optional: true
+            - name: ALATYR_LOCAL_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.existingSecret }}
+                  key: local-admin-password
+                  optional: true
+
+            {{- if .Values.keycloak.url }}
+            - name: KEYCLOAK_URL
+              value: {{ .Values.keycloak.url | quote }}
+            - name: KEYCLOAK_REALM
+              value: {{ .Values.keycloak.realm | quote }}
+            - name: KEYCLOAK_CLIENT_ID
+              value: {{ .Values.keycloak.clientId | quote }}
+            - name: KEYCLOAK_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.existingSecret }}
+                  key: {{ .Values.keycloak.clientSecretKey }}
+            {{- end }}
+
+            {{- if .Values.server.webhooksEnabled }}
+            - name: ALATYR_WEBHOOKS_ENABLED
+              value: "true"
+            - name: ALATYR_WEBHOOK_ENC_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.existingSecret }}
+                  key: webhook-enc-key
+            {{- end }}
+            - name: ALATYR_REMOTE_LOGS_ENABLED
+              value: {{ .Values.server.remoteLogsEnabled | quote }}
+
+            - name: VAULT_ADDR
+              value: {{ .Values.vault.addr | quote }}
+            {{- if eq .Values.vault.auth "approle" }}
+            - name: VAULT_ROLE_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.existingSecret }}
+                  key: vault-role-id
+            - name: VAULT_SECRET_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.existingSecret }}
+                  key: vault-secret-id
+            {{- else }}
+            - name: VAULT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.existingSecret }}
+                  key: vault-token
+            {{- end }}
+            {{- if .Values.vault.caCertPath }}
+            - name: VAULT_CA_CERT_PATH
+              value: {{ .Values.vault.caCertPath | quote }}
+            {{- end }}
+            - name: VAULT_PKI_MOUNT
+              value: {{ .Values.vault.pkiMount | quote }}
+            - name: VAULT_PKI_ROLE
+              value: {{ .Values.vault.pkiRole | quote }}
+            - name: VAULT_CERT_TTL_HOURS
+              value: {{ .Values.vault.certTTLHours | quote }}
+            {{- with .Values.server.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          readinessProbe:
+            httpGet:
+              path: /api/v1/version
+              port: 8090
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 20
+          livenessProbe:
+            httpGet:
+              path: /api/v1/version
+              port: 8090
+            initialDelaySeconds: 20
+            periodSeconds: 15
+          resources:
+            {{- toYaml .Values.server.resources | nindent 12 }}

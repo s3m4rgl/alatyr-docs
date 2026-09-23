@@ -1,0 +1,121 @@
+site_name: Alatyr — Документация
+site_description: Управление сертификатами и SSH-ключами устройств для 802.1X EAP-TLS и SSH-доступа
+site_url: https://s3m4rgl.github.io/alatyr-docs/
+repo_url: https://github.com/s3m4rgl/alatyr-docs
+docs_dir: docs
+
+theme:
+  name: material
+  language: ru
+  palette:
+    - scheme: default
+      primary: indigo
+      toggle:
+        icon: material/weather-night
+        name: Тёмная тема
+    - scheme: slate
+      primary: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Светлая тема
+  features:
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+    - search.suggest
+
+# Битые ЯКОРЯ strict-сборка по умолчанию пропускает: в MkDocs 1.6
+# validation.links.anchors стоит на `info`, то есть ссылка вида
+# `setup.md#несуществующий-якорь` молча собирается. Проверено опытом:
+# заведомо битый якорь прошёл `mkdocs build --strict`, а с `warn` — уронил
+# сборку. Русские заголовки делают ошибку особенно лёгкой: MkDocs их не
+# транслитерирует, и латинская форма якоря выглядит правдоподобно, но ведёт
+# в никуда.
+validation:
+  links:
+    anchors: warn
+    absolute_links: info
+    unrecognized_links: warn
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid-src
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.highlight
+  - toc:
+      permalink: true
+      slugify: !!python/object/apply:pymdownx.slugs.slugify
+        kwds:
+          case: lower
+  - tables
+
+plugins:
+  - search:
+      lang: ru
+
+extra_css:
+  - assets/css/diagram-zoom.css
+
+extra_javascript:
+  - assets/js/diagram-zoom.js
+
+nav:
+  - Обзор: index.md
+  - "Пилот: с чего начать": pilot.md
+  - Сценарии применения: use-cases.md
+  - Знакомство с продуктом:
+      - Архитектура и PKI: architecture.md
+      - Расчёт ресурсов: sizing.md
+      - Отказоустойчивость (HA): ha.md
+      - Известные ограничения: limitations.md
+      - Лицензирование: licensing.md
+  - Развёртывание и настройка:
+      - Установка: installation.md
+      - Встроенный УЦ: selfhosted-ca.md
+      - Конфигурация: configuration.md
+  - Администрирование:
+      - Управление и роли: administration.md
+      - Агенты: agents.md
+      - Окно агента: agent-window.md
+      - Wi-Fi и проводной 802.1X:
+          - Обзор: wifi/index.md
+          - Настройка сети: wifi/setup.md
+          - Имя RADIUS-сервера: wifi/server-name.md
+          - Сторона RADIUS: wifi/radius.md
+          - Нюансы и пределы: wifi/caveats.md
+      - mTLS пользователя:
+          - Обзор: mtls/index.md
+          - Настройка: mtls/setup.md
+          - Отзыв доступа: mtls/revocation.md
+          - Нюансы и пределы: mtls/caveats.md
+      - SSH-доступ:
+          - Обзор: ssh/index.md
+          - Настройка: ssh/setup.md
+          - Отзыв доступа: ssh/revocation.md
+          - Нюансы и пределы: ssh/caveats.md
+          - Совмещение с FreeIPA: ssh/freeipa.md
+          - Реестр ключей и Keyholder API: ssh/registry.md
+      - Вход в домен по смарт-карте:
+          - Обзор: ad-logon/index.md
+          - Настройка: ad-logon/setup.md
+          - Вход по RDP: ad-logon/rdp.md
+          - Пределы и нюансы: ad-logon/caveats.md
+      - Доступ к Kubernetes:
+          - Обзор: k8s/index.md
+          - Настройка: k8s/setup.md
+          - Два режима доставки credential: k8s/delivery.md
+          - Нюансы и пределы: k8s/caveats.md
+      - Доступ по VPN:
+          - Обзор: vpn/index.md
+          - Настройка: vpn/setup.md
+          - Нюансы и пределы: vpn/caveats.md
+      - Приёмники (haproxy, nginx, OpenVPN): relying-parties.md
+  - Справочник и эксплуатация:
+      - REST API: api.md
+      - Логирование: logging.md
+      - Эксплуатация: operations.md
+      - Диагностика: troubleshooting.md

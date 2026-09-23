@@ -1,0 +1,105 @@
+name: alatyr
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: alatyr
+      POSTGRES_USER: wifi_cert
+      # Отказ ОБЪЯСНЯЕТ СЕБЯ, как у ALATYR_IMAGE_TAG выше. Пустое
+      # значение уезжало в postgres, и клиент получал сообщение чужого
+      # образа про суперпользователя вместо нашего про наш же файл:
+      #   Error: Database is uninitialized and superuser password is not specified
+      POSTGRES_PASSWORD: "${DB_PASSWORD:?задайте DB_PASSWORD в .env — пароль пользователя базы, годится любая строка из openssl rand -base64 24}"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wifi_cert"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  alatyr-server:
+    # Готовый образ из Docker Hub. Сборки из исходников здесь нет и не будет:
+    # в этом репозитории лежит только развёртывание, исходников у вас нет.
+    #
+    # Тег обязателен и намеренно не имеет значения по умолчанию. Плавающий тег
+    # однажды отдал сборку месячной давности, и обнаружилось это не отказом, а
+    # тем, что в продукте не оказалось нужной возможности — худший вид сбоя,
+    # потому что он находится уже у вас. Версию поставки берите из релизных
+    # заметок и фиксируйте в .env.
+    image: ${ALATYR_SERVER_IMAGE:-s3m4rgl/alatyr-server}:${ALATYR_IMAGE_TAG:?задайте ALATYR_IMAGE_TAG — версию поставки; плавающего тега latest у нас нет намеренно}
+    environment:
+      # Legacy names (SERVER_PORT, DB_URL, ..., and mid-tier WIFI_CERT_*) still
+      # accepted; canonical ALATYR_* preferred.
+      ALATYR_SERVER_PORT: "8090"
+      ALATYR_DB_URL: "postgres://wifi_cert:${DB_PASSWORD}@postgres:5432/alatyr?sslmode=disable"
+
+      # ── Vault ──────────────────────────────────────────────────────────────
+      VAULT_ADDR: ${VAULT_ADDR}
+      # AppRole (recommended for production) — takes priority over VAULT_TOKEN
+      VAULT_ROLE_ID: ${VAULT_ROLE_ID:-}
+      VAULT_SECRET_ID: ${VAULT_SECRET_ID:-}
+      # Static token fallback — ignored when VAULT_ROLE_ID is set
+      VAULT_TOKEN: ${VAULT_TOKEN:-}
+      # PKI backend settings
+      VAULT_PKI_MOUNT: ${VAULT_PKI_MOUNT:-pki}
+      VAULT_PKI_ROLE: ${VAULT_PKI_ROLE:-alatyr}
+      # Optional: PEM bundle to trust a custom Vault CA
+      VAULT_CA_CERT_PATH: ${VAULT_CA_CERT_PATH:-}
+      # Certificate TTL in hours (default 26280 = 3 years)
+      VAULT_CERT_TTL_HOURS: ${VAULT_CERT_TTL_HOURS:-26280}
+
+      # ── Keycloak ────────────────────────────────────────────────────────────
+      KEYCLOAK_URL: ${KEYCLOAK_URL}
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM}
+      KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID}
+      KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET}
+
+      # ── Application ─────────────────────────────────────────────────────────
+      ALATYR_DEFAULT_SSID: ${ALATYR_DEFAULT_SSID:-${WIFI_CERT_DEFAULT_SSID:-${WIFI_SSID:-CorpWiFi}}}
+      # Comma-separated list of allowed CORS origins
+      ALATYR_CORS_ORIGINS: ${ALATYR_CORS_ORIGINS:-${WIFI_CERT_CORS_ORIGINS:-${CORS_ORIGINS:-}}}
+      ALATYR_LOG_LEVEL: ${ALATYR_LOG_LEVEL:-${WIFI_CERT_LOG_LEVEL:-${LOG_LEVEL:-info}}}
+      # Set to "true" to disable Keycloak JWT validation (DEV ONLY, never production)
+      ALATYR_DEV_MODE: ${ALATYR_DEV_MODE:-${WIFI_CERT_DEV_MODE:-${AUTH_DEV_MODE:-false}}}
+
+      # ── Local authentication (email + password) — coexists with Keycloak ─────
+      ALATYR_LOCAL_AUTH_ENABLED: ${ALATYR_LOCAL_AUTH_ENABLED:-${WIFI_CERT_LOCAL_AUTH_ENABLED:-${AUTH_LOCAL_ENABLED:-false}}}
+      ALATYR_LOCAL_JWT_SECRET: ${ALATYR_LOCAL_JWT_SECRET:-${WIFI_CERT_LOCAL_JWT_SECRET:-${LOCAL_JWT_SECRET:-}}}
+      ALATYR_LOCAL_ADMIN_EMAIL: ${ALATYR_LOCAL_ADMIN_EMAIL:-${WIFI_CERT_LOCAL_ADMIN_EMAIL:-${LOCAL_ADMIN_EMAIL:-}}}
+      ALATYR_LOCAL_ADMIN_PASSWORD: ${ALATYR_LOCAL_ADMIN_PASSWORD:-${WIFI_CERT_LOCAL_ADMIN_PASSWORD:-${LOCAL_ADMIN_PASSWORD:-}}}
+      ALATYR_LOCAL_ACCESS_TTL_MIN: ${ALATYR_LOCAL_ACCESS_TTL_MIN:-${WIFI_CERT_LOCAL_ACCESS_TTL_MIN:-${LOCAL_ACCESS_TTL_MIN:-15}}}
+      ALATYR_LOCAL_REFRESH_TTL_DAYS: ${ALATYR_LOCAL_REFRESH_TTL_DAYS:-${WIFI_CERT_LOCAL_REFRESH_TTL_DAYS:-${LOCAL_REFRESH_TTL_DAYS:-30}}}
+    ports:
+      # Внешний порт параметризован: 8090 и 3000 — самые занятые
+      # порты на машине, где уже что-то крутится, и зашитое значение
+      # означает правку манифеста при первом же столкновении. Внутренний
+      # порт менять не нужно.
+      - "${ALATYR_API_PORT:-8090}:8090"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8090/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  alatyr-ui:
+    image: ${ALATYR_UI_IMAGE:-s3m4rgl/alatyr-frontend}:${ALATYR_IMAGE_TAG:?задайте ALATYR_IMAGE_TAG — версию поставки; плавающего тега latest у нас нет намеренно}
+    environment:
+      VITE_KEYCLOAK_URL: ${KEYCLOAK_URL}
+      VITE_KEYCLOAK_REALM: ${KEYCLOAK_REALM}
+      VITE_KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID}
+    ports:
+      - "${ALATYR_UI_PORT:-3000}:8080"
+    depends_on:
+      alatyr-server:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

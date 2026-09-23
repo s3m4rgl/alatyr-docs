@@ -1,0 +1,134 @@
+# Alatyr — продовый чарт.
+#
+# Соседний чарт `alatyr-demo` — демонстрационный: Vault в режиме `-dev`
+# (в памяти), секреты открытым текстом в values, и CronJob, который каждые
+# четыре часа ОЧИЩАЕТ все таблицы приложения. Этот чарт не является его
+# настройкой: у него другие умолчания и нет ни одного из перечисленных
+# механизмов.
+#
+# Обязательное к заданию — четыре пункта, и без них релиз не установится:
+#   1. образы (image.server / image.frontend) в вашем registry;
+#   2. существующий Secret с секретами (secrets.existingSecret);
+#   3. адрес Vault (vault.addr) — чарт НЕ поднимает УЦ внутри себя;
+#   4. подключение к PostgreSQL (postgres.mode: external + url в Secret),
+#      либо осознанно выбранный однорепличный вариант в кластере.
+
+namespace: alatyr
+
+image:
+  # Публичные образы в Docker Hub. Если в вашем контуре нет выхода наружу —
+  # перелейте их в свой реестр (skopeo copy) и подставьте его адрес сюда.
+  server: s3m4rgl/alatyr-server
+  frontend: s3m4rgl/alatyr-frontend
+  # Тег обязателен: плавающего `latest` у нас нет намеренно — он однажды отдал
+  # сборку месячной давности, и обнаружилось это уже у заказчика. Версию берите
+  # из релизных заметок.
+  tag: ""
+  pullPolicy: IfNotPresent
+  pullSecrets: []
+
+# ── Секреты ────────────────────────────────────────────────────────────────
+# Только ссылкой на существующий Secret. Значений в values нет и не будет:
+# values уезжают в git и в `helm get values` любому, у кого есть доступ к
+# релизу.
+#
+# Ожидаемые ключи:
+#   local-jwt-secret       — HS256, >=32 байт (openssl rand -hex 32)
+#   webhook-enc-key        — 64 hex-символа, если включены вебхуки
+#   local-admin-email      — первый администратор (можно убрать после входа)
+#   local-admin-password   — его пароль
+#   database-url           — при postgres.mode=external
+#   postgres-password      — при postgres.mode=embedded
+#   vault-role-id          — при vault.auth=approle
+#   vault-secret-id        — при vault.auth=approle
+#   vault-token            — при vault.auth=token
+secrets:
+  existingSecret: ""
+
+# ── Vault ──────────────────────────────────────────────────────────────────
+# Чарт ожидает ГОТОВЫЙ Vault и внутри себя его не поднимает.
+#
+# Если удостоверяющего центра ещё нет, начните с
+# docker/docker-compose.selfhosted.yml (docs/SELFHOSTED-CA.md): там встроенный
+# Vault с файловым хранилищем, инициализацией и распечатыванием. Поднимать УЦ
+# внутри этого чарта сознательно не стали — Vault в кластере это отдельная
+# установка со своим хранилищем, распечатыванием и резервными копиями, и
+# делать её «попутно» значит спрятать её от того, кто за неё отвечает.
+vault:
+  addr: ""            # https://vault.corp.example:8200
+  auth: approle       # approle (рекомендуемо) | token
+  caCertPath: ""      # смонтированный PEM, если у Vault свой УЦ
+  pkiMount: pki_wifi  # запасной путь; у каждой цели свой издатель, см. NOTES
+  pkiRole: alatyr
+  certTTLHours: "26280"
+
+# ── PostgreSQL ─────────────────────────────────────────────────────────────
+postgres:
+  # external (рекомендуемо) — управляемая или отдельно развёрнутая база,
+  #                            строка подключения в Secret (database-url);
+  # embedded              — ОДИН под в этом релизе. Пригодно для пилота;
+  #                            это не отказоустойчивая установка.
+  mode: external
+
+  # Всё ниже действует только при mode: embedded.
+  image: postgres:15
+  db: alatyr
+  user: wifi_cert
+  storage:
+    size: 20Gi
+    storageClassName: ""
+  # Резервная копия однорепличной базы. Включена по умолчанию НАМЕРЕННО:
+  # единственный под без копии — это не пилот, а отложенная потеря данных.
+  backup:
+    enabled: true
+    schedule: "0 2 * * *"
+    keepDays: 14
+    storage:
+      size: 20Gi
+      storageClassName: ""
+
+# ── Сервер ─────────────────────────────────────────────────────────────────
+server:
+  replicas: 1
+  # Больше одной реплики чарт не выпустит без этого признания. Причина — в
+  # публичном документе об отказоустойчивости: поллинг SCEP рассчитан на одну
+  # реплику, ограничение частоты не общее между репликами. Признание не чинит
+  # ни то, ни другое; оно лишь отличает осознанное решение от невнимательности.
+  acknowledgeMultiReplicaLimits: false
+  logLevel: info
+  corsOrigins: ""
+  trustedProxies: ""      # CIDR тех прокси, чьему X-Forwarded-For верим
+  webhooksEnabled: false
+  remoteLogsEnabled: false
+  extraEnv: []
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits:   { memory: 1Gi }
+
+frontend:
+  replicas: 1
+  resources:
+    requests: { cpu: 50m, memory: 64Mi }
+    limits:   { memory: 256Mi }
+
+keycloak:
+  url: ""
+  realm: ""
+  clientId: ""
+  # Секрет клиента — ключ keycloak-client-secret в том же Secret.
+  clientSecretKey: keycloak-client-secret
+
+ingress:
+  enabled: false
+  className: ""
+  host: ""
+  clusterIssuer: ""
+  tlsSecretName: ""
+  annotations: {}
+
+# Адрес Vault, по которому его видят КЛИЕНТЫ, а не поды. Попадает внутрь
+# выданного сертификата точкой распространения списка отзыва: имя службы
+# кластера снаружи не разрешается, и проверить отозванность нечем. Смена
+# значения НЕ чинит уже выданные сертификаты.
+pki:
+  publicAddr: ""

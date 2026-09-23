@@ -1,0 +1,184 @@
+# Alatyr — инфраструктура для ознакомления: PostgreSQL, Vault в dev-режиме и
+# Keycloak. Сервер и веб-интерфейс поднимаются профилем `app` готовыми образами.
+#
+# ЧЕМ ОТЛИЧАЕТСЯ ОТ СОСЕДНИХ ФАЙЛОВ:
+#   docker-compose.demo.yml — всё сразу, с демонстрационными данными, одной
+#                             командой; смотреть продукт;
+#   docker-compose.dev.yml  — ЭТОТ: инфраструктура отдельно, чтобы подключить
+#                             к ней свой Keycloak-realm или свои настройки
+#                             Vault и посмотреть, как продукт ведёт себя с
+#                             ними;
+#   docker-compose.yml      — рабочая установка: только PostgreSQL, сервер и
+#                             интерфейс, а Vault и Keycloak вы приносите свои.
+#
+# ВНИМАНИЕ: Vault здесь поднят в РЕЖИМЕ РАЗРАБОТКИ — он держит данные в
+# памяти, не запечатывается и имеет заранее известный корневой токен. Это
+# годится для знакомства и НЕ годится для продуктивной работы: перезапуск
+# стирает выпущенный УЦ вместе со всеми подписанными сертификатами.
+# Keycloak поднят с базой в контейнере и без TLS по той же причине.
+#
+# Пароли и токены в этом файле — демонстрационные и заведомо известные.
+# Меняйте их до любого использования за пределами вашей машины.
+
+name: alatyr-dev
+
+# Dev infrastructure stack: postgres + vault + keycloak.
+# The server and frontend are typically run locally (go run / bun dev)
+# so they can connect to these services via localhost ports below.
+#
+# To also run the server and frontend in Docker:
+#   docker compose -f docker-compose.dev.yml --profile app up
+
+services:
+  # ── PostgreSQL ──────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:15
+    container_name: alatyr-postgres
+    environment:
+      POSTGRES_DB: alatyr
+      POSTGRES_USER: wifi_cert
+      POSTGRES_PASSWORD: wifi_cert_dev
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wifi_cert"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Vault (dev mode) ────────────────────────────────────────────────────────
+  vault:
+    image: hashicorp/vault:1.17
+    container_name: alatyr-vault
+    environment:
+      VAULT_DEV_ROOT_TOKEN_ID: dev-root-token
+      VAULT_DEV_LISTEN_ADDRESS: "0.0.0.0:8200"
+    ports:
+      - "8200:8200"
+    cap_add:
+      - IPC_LOCK
+    command: vault server -dev
+
+  # ── Keycloak ────────────────────────────────────────────────────────────────
+  keycloak-postgres:
+    image: postgres:15
+    container_name: alatyr-keycloak-postgres
+    environment:
+      POSTGRES_DB: keycloakdb
+      POSTGRES_USER: keycloakuser
+      POSTGRES_PASSWORD: keycloakpass
+    volumes:
+      - keycloak_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U keycloakuser -d keycloakdb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:24.0.5
+    container_name: alatyr-keycloak
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://keycloak-postgres:5432/keycloakdb
+      KC_DB_USERNAME: keycloakuser
+      KC_DB_PASSWORD: keycloakpass
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin123456
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin123456
+      KC_HTTP_ENABLED: "true"
+      KC_HOSTNAME: localhost
+      KC_HOSTNAME_STRICT: "false"
+      KC_HOSTNAME_STRICT_HTTPS: "false"
+    ports:
+      - "8080:8080"
+    depends_on:
+      keycloak-postgres:
+        condition: service_healthy
+    command: start-dev
+
+  # ── Server (optional, profile: app) ─────────────────────────────────────────
+  # Start with: docker compose -f docker-compose.dev.yml --profile app up
+  alatyr-server:
+    profiles: [app]
+    image: ${ALATYR_SERVER_IMAGE:-s3m4rgl/alatyr-server}:${ALATYR_IMAGE_TAG:?задайте ALATYR_IMAGE_TAG — версию поставки; плавающего тега latest у нас нет намеренно}
+    container_name: alatyr-server
+    environment:
+      # Legacy names (SERVER_PORT, DB_URL, ..., and mid-tier WIFI_CERT_*) still
+      # accepted; canonical ALATYR_* preferred.
+      ALATYR_SERVER_PORT: "8090"
+      ALATYR_DB_URL: "postgres://wifi_cert:wifi_cert_dev@postgres:5432/alatyr?sslmode=disable"
+
+      # ── Vault ──────────────────────────────────────────────────────────────
+      VAULT_ADDR: "http://vault:8200"
+      # Static dev token — run `make vault-setup` to get an AppRole instead
+      VAULT_TOKEN: "dev-root-token"
+      VAULT_ROLE_ID: ""
+      VAULT_SECRET_ID: ""
+      VAULT_PKI_MOUNT: "pki"
+      VAULT_PKI_ROLE: "alatyr"
+      VAULT_CA_CERT_PATH: ""
+      VAULT_CERT_TTL_HOURS: "26280"
+
+      # ── Keycloak ────────────────────────────────────────────────────────────
+      KEYCLOAK_URL: "http://keycloak:8080"
+      KEYCLOAK_REALM: "alatyr"
+      KEYCLOAK_CLIENT_ID: "alatyr-portal"
+      KEYCLOAK_CLIENT_SECRET: "dev-portal-secret"
+
+      # ── Application ─────────────────────────────────────────────────────────
+      ALATYR_DEFAULT_SSID: "CorpWiFi"
+      ALATYR_CORS_ORIGINS: "http://localhost:3000,http://localhost:5173"
+      ALATYR_LOG_LEVEL: "debug"
+      ALATYR_DEV_MODE: "true"
+
+      # ── Local authentication (off in dev by default; enable if testing local login) ──
+      ALATYR_LOCAL_AUTH_ENABLED: "false"
+      ALATYR_LOCAL_JWT_SECRET: ""
+      ALATYR_LOCAL_ADMIN_EMAIL: ""
+      ALATYR_LOCAL_ADMIN_PASSWORD: ""
+      ALATYR_LOCAL_ACCESS_TTL_MIN: "15"
+      ALATYR_LOCAL_REFRESH_TTL_DAYS: "30"
+
+      # Webhooks (off by default). To test locally, set:
+      # ALATYR_WEBHOOKS_ENABLED: "true"
+      # ALATYR_WEBHOOK_ENC_KEY: "<openssl rand -hex 32>"
+    ports:
+      - "8090:8090"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      vault:
+        condition: service_started
+      keycloak:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8090/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  # ── Frontend (optional, profile: app) ───────────────────────────────────────
+  alatyr-ui:
+    profiles: [app]
+    image: ${ALATYR_UI_IMAGE:-s3m4rgl/alatyr-frontend}:${ALATYR_IMAGE_TAG:?задайте ALATYR_IMAGE_TAG — версию поставки; плавающего тега latest у нас нет намеренно}
+    container_name: alatyr-ui
+    environment:
+      # Keycloak settings injected at runtime into the JS bundle by entrypoint.sh.
+      # Override these to switch between local dev Keycloak and a real one.
+      VITE_KEYCLOAK_URL: "http://localhost:8080"
+      VITE_KEYCLOAK_REALM: "alatyr"
+      VITE_KEYCLOAK_CLIENT_ID: "alatyr-portal"
+    ports:
+      - "3000:8080"
+    depends_on:
+      alatyr-server:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  keycloak_postgres_data:

@@ -1,0 +1,202 @@
+# УСТАРЕЛ (с выпуска v1.5.5). Для новых установок берите набор
+# развёртывания из выпуска — `alatyr-deploy-<версия>.tar.gz` в
+# https://github.com/s3m4rgl/alatyr-docs/releases (с v1.5.5): там корневой и
+# промежуточные УЦ, `first-up.sh` печатает учётные данные, тег образов вписан.
+# Этот файл оставлен для уже развёрнутых установок.
+#
+# Самостоятельная поставка Alatyr со ВСТРОЕННЫМ удостоверяющим центром.
+#
+# Чем отличается от двух соседних файлов:
+#
+#   docker-compose.yml       — сервер + БД + UI, Vault ВНЕШНИЙ (VAULT_ADDR).
+#                              Годится, когда УЦ у заказчика уже есть.
+#   docker-compose.demo.yml  — Vault внутри, но в режиме `-dev`: в памяти, без
+#                              распечатывания, корневой токен захардкожен.
+#                              Перезапуск контейнера уничтожает корневой ключ.
+#   ЭТОТ ФАЙЛ                — Vault внутри и НАСТОЯЩИЙ: файловое хранилище на
+#                              томе, инициализация и распечатывание, AppRole
+#                              вместо корневого токена, отдельный промежуточный
+#                              УЦ на каждую цель.
+#
+# Сценарий, под который он сделан: пилот начинается со встроенного УЦ, а
+# позже переезжает на Vault заказчика. Переезд не требует правок кода —
+# профили издателей в админке указывают на другой адрес и mount.
+#
+# ── Что обязательно задать перед первым запуском (docker/.env) ─────────────
+#   ALATYR_IMAGE_TAG                 — версия поставки (тега latest нет)
+#   DB_PASSWORD                      — пароль PostgreSQL
+#   ALATYR_LOCAL_ADMIN_EMAIL         — первый администратор
+#   ALATYR_LOCAL_ADMIN_PASSWORD      — его пароль (убрать после первого входа)
+#   ALATYR_LOCAL_JWT_SECRET          — openssl rand -hex 32
+#   ALATYR_PKI_ALLOWED_DOMAINS       — домены организации (через запятую)
+#
+# ── Что настроить ПОСЛЕ первого запуска ───────────────────────────────────
+#   Профили издателей в админке: wifi → pki_wifi/alatyr,
+#   user_mtls → pki_user_mtls/user-mtls, k8s → pki_k8s/k8s.
+#   Служебный контейнер поднимает эти точки монтирования и роли, но КУДА
+#   ходит каждая цель — запись в базе, и без неё заявки уедут в vault_failed.
+#
+# ── Чего этот файл НЕ делает ──────────────────────────────────────────────
+#   * не резервирует БД и УЦ — см. docs/SELFHOSTED-CA.md, раздел о копиях;
+#   * не поднимает вторую реплику сервера — ограничения на N репликах
+#     перечислены в публичном документе об отказоустойчивости;
+#   * не заменяет auto-unseal через KMS. Ключ распечатывания по умолчанию
+#     лежит в томе рядом с данными, и это осознанный компромисс пилота —
+#     служебный контейнер говорит об этом при первом запуске.
+#
+# ── Откуда берутся образы ─────────────────────────────────────────────────
+#   * из реестра по тегу — умолчание (`docker compose ... pull`);
+#   * из файлов бандла поставки — `docker load -i images/alatyr-server-*.tar`,
+#     затем задать ALATYR_SERVER_IMAGE/ALATYR_UI_IMAGE и тег из manifest.yaml;
+#   * собрать самому — добавить вторым `-f docker-compose.build.yml`.
+#   Подробности — docs/DELIVERY.md.
+name: alatyr
+
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: alatyr
+      POSTGRES_USER: wifi_cert
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?задайте DB_PASSWORD в docker/.env}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wifi_cert"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ── Встроенный УЦ ────────────────────────────────────────────────────────
+  # Портов наружу нет намеренно: слушатель без TLS (см. vault-selfhosted.hcl)
+  # допустим ровно потому, что доступен только по сети compose.
+  vault:
+    image: hashicorp/vault:1.17
+    command: vault server -config=/vault/config/vault.hcl
+    environment:
+      VAULT_ADDR: "http://127.0.0.1:8200"
+    volumes:
+      - ./vault-selfhosted.hcl:/vault/config/vault.hcl:ro
+      - vault_data:/vault/file
+    cap_add:
+      - IPC_LOCK
+    healthcheck:
+      # 0 — распечатан, 2 — запечатан: оба означают «процесс жив и отвечает».
+      # Ждать здесь именно распечатанного нельзя: распечатывает его служебный
+      # контейнер ниже, который сам ждёт этой проверки.
+      test: ["CMD-SHELL", "vault status >/dev/null 2>&1 || [ $$? -eq 2 ]"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  # Инициализация + распечатывание + PKI + AppRole. Идемпотентен, выполняется
+  # на каждый `up`, выходит с нулём.
+  vault-bootstrap:
+    image: hashicorp/vault:1.17
+    depends_on:
+      vault:
+        condition: service_healthy
+    environment:
+      VAULT_ADDR: "http://vault:8200"
+      VAULT_CERT_TTL_HOURS: ${VAULT_CERT_TTL_HOURS:-26280}
+      # Домены организации. Обязательны: роль Vault — второй рубеж проверки
+      # имени после сервера, и сузить её больше нечем. Служебный контейнер
+      # откажется работать без этого значения, а не заведёт роль «на любое
+      # имя» молча (README, «Продовая роль Vault PKI»).
+      ALATYR_PKI_ALLOWED_DOMAINS: ${ALATYR_PKI_ALLOWED_DOMAINS:?задайте ALATYR_PKI_ALLOWED_DOMAINS, например corp.example}
+      ALATYR_PKI_ALLOW_SUBDOMAINS: ${ALATYR_PKI_ALLOW_SUBDOMAINS:-true}
+      ROOT_CA_CN: ${ROOT_CA_CN:-Alatyr Root CA}
+      WIFI_CA_CN: ${WIFI_CA_CN:-Alatyr WiFi Issuing CA}
+      USER_MTLS_CA_CN: ${USER_MTLS_CA_CN:-Alatyr User mTLS Issuing CA}
+      K8S_CA_CN: ${K8S_CA_CN:-Alatyr Kubernetes Issuing CA}
+      # Владелец файлов с кредами: сервер работает от непривилегированного
+      # пользователя своего образа, а служебный контейнер — от root.
+      ALATYR_CREDS_UID: ${ALATYR_CREDS_UID:-100}
+      ALATYR_CREDS_GID: ${ALATYR_CREDS_GID:-101}
+    volumes:
+      - ./vault-bootstrap.sh:/bootstrap.sh:ro
+      - vault_keys:/vault/keys
+      - vault_creds:/run/alatyr
+    entrypoint: ["/bin/sh", "/bootstrap.sh"]
+    restart: "no"
+
+  alatyr-server:
+    # ГОТОВЫЙ ОБРАЗ, а не сборка из исходников: заказчику отдаются образы, и
+    # собирать у него нечего (Go, bun и прочего на его машине может не быть
+    # вовсе). Сборка из исходников — отдельный файл docker-compose.build.yml,
+    # он накладывается вторым `-f` и нужен только разработчику.
+    #
+    # Тег ОБЯЗАТЕЛЕН и умолчания не имеет. `latest` не публикуется намеренно:
+    # замер 2026-09-04 показал, что плавающий тег поднял сборку месячной
+    # давности, установка при этом отвечала `{"status":"ok"}`, и расхождение
+    # всплыло лишь на настройке издателей — цели `k8s` в той сборке ещё не
+    # было. «Работает, но не то» обнаруживается у заказчика.
+    image: ${ALATYR_SERVER_IMAGE:-s3m4rgl/alatyr-server}:${ALATYR_IMAGE_TAG:?задайте ALATYR_IMAGE_TAG — версию поставки; тега latest у нас нет намеренно}
+    environment:
+      ALATYR_SERVER_PORT: "8090"
+      ALATYR_DB_URL: "postgres://wifi_cert:${DB_PASSWORD}@postgres:5432/alatyr?sslmode=disable"
+
+      VAULT_ADDR: "http://vault:8200"
+      # Креды AppRole выписывает служебный контейнер УЖЕ ПОСЛЕ старта стека,
+      # поэтому передать их переменной окружения невозможно: compose читает
+      # `environment:` один раз, до того. Форма <ИМЯ>_FILE читает значение из
+      # файла в момент запуска сервера — см. docs/ENV.md.
+      VAULT_ROLE_ID_FILE: /run/alatyr/vault_role_id
+      VAULT_SECRET_ID_FILE: /run/alatyr/vault_secret_id
+      VAULT_PKI_MOUNT: ${VAULT_PKI_MOUNT:-pki_wifi}
+      VAULT_PKI_ROLE: ${VAULT_PKI_ROLE:-alatyr}
+      VAULT_CERT_TTL_HOURS: ${VAULT_CERT_TTL_HOURS:-26280}
+
+      KEYCLOAK_URL: ${KEYCLOAK_URL:-}
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-}
+      KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-}
+      KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET:-}
+
+      ALATYR_DEFAULT_SSID: ${ALATYR_DEFAULT_SSID:-CorpWiFi}
+      ALATYR_CORS_ORIGINS: ${ALATYR_CORS_ORIGINS:-}
+      ALATYR_LOG_LEVEL: ${ALATYR_LOG_LEVEL:-info}
+      # Режим разработки в этом файле не предусмотрен: он раздаёт права
+      # cert-admin по строке 'Bearer dev-token'.
+      ALATYR_DEV_MODE: "false"
+
+      ALATYR_LOCAL_AUTH_ENABLED: ${ALATYR_LOCAL_AUTH_ENABLED:-true}
+      ALATYR_LOCAL_JWT_SECRET: ${ALATYR_LOCAL_JWT_SECRET:?задайте ALATYR_LOCAL_JWT_SECRET (openssl rand -hex 32)}
+      ALATYR_LOCAL_ADMIN_EMAIL: ${ALATYR_LOCAL_ADMIN_EMAIL:-}
+      ALATYR_LOCAL_ADMIN_PASSWORD: ${ALATYR_LOCAL_ADMIN_PASSWORD:-}
+    volumes:
+      - vault_creds:/run/alatyr:ro
+    ports:
+      - "8090:8090"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      vault-bootstrap:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8090/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  alatyr-ui:
+    image: ${ALATYR_UI_IMAGE:-s3m4rgl/alatyr-frontend}:${ALATYR_IMAGE_TAG:?задайте ALATYR_IMAGE_TAG}
+    environment:
+      VITE_KEYCLOAK_URL: ${KEYCLOAK_URL:-}
+      VITE_KEYCLOAK_REALM: ${KEYCLOAK_REALM:-}
+      VITE_KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-}
+    ports:
+      - "3000:8080"
+    depends_on:
+      alatyr-server:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  vault_data:   # хранилище Vault: здесь живёт корневой ключ УЦ
+  vault_keys:   # init.json — ключ распечатывания и корневой токен
+  vault_creds:  # role_id/secret_id, которые читает сервер
