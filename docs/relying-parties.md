@@ -117,25 +117,77 @@ location / {
 
 ## OpenVPN
 
-Замерено на `openvpn 2.6.14` (Debian), клиент — тот же `openvpn` с ключом,
-который не покидает чип (через `tpm2-pkcs11`).
+Замерено на `openvpn 2.6.14` (Debian), сентябрь 2026. Клиенты — `openvpn` с
+ключом, который не покидает чип: на Linux через `tpm2-pkcs11`, на Windows через
+`cryptoapicert` (ключ TPM в CNG), на macOS через интерфейс управления (ключ
+Secure Enclave).
 
 Сервер, минимум:
 
 ```
-ca   /etc/openvpn/ca.crt          # корень Alatyr (и промежуточный, если он есть)
+# ca — цепочка УЦ цели vpn: промежуточный И корень. Для встроенного УЦ:
+#   curl -s "$VAULT_ADDR/v1/pki_vpn/ca_chain" > /etc/openvpn/alatyr-vpn-chain.pem
+ca   /etc/openvpn/alatyr-vpn-chain.pem
 cert /etc/openvpn/server.crt
 key  /etc/openvpn/server.key
 remote-cert-tls client            # требовать у клиента EKU clientAuth
-crl-verify /etc/openvpn/crl.pem   # без этой строки отзыв НЕ действует
+crl-verify /etc/openvpn/vpn-crl.pem   # без этой строки отзыв НЕ действует
+
+# ВОТ ЧТО РАЗДЕЛЯЕТ ЦЕЛИ. Без проверки издателя сервер пускает сертификат
+# ЛЮБОЙ цели того же корня — см. таблицу ниже.
+script-security 2
+tls-verify /etc/openvpn/alatyr-issuer-check.sh
 ```
 
-Клиент с ключом в чипе:
+`/etc/openvpn/alatyr-issuer-check.sh` (права `755`):
+
+```sh
+#!/bin/sh
+# OpenVPN зовёт скрипт на каждой глубине цепочки: $1 — глубина.
+# На глубине 1 стоит издатель листа, его CN — в X509_1_CN.
+[ "$1" != 1 ] && exit 0
+[ "$X509_1_CN" = "Alatyr VPN Issuing CA" ] && exit 0
+echo "issuer-check: отказ, издатель $X509_1_CN" >&2
+exit 1
+```
+
+### Почему «положить в `ca` только цепочку vpn» недостаточно
+
+Кажется, что без промежуточного УЦ чужой цели сервер её сертификат не
+проверит. Это не так: клиент вправе приложить свой промежуточный сам
+(`extra-certs`), и OpenSSL построит цепочку через него до общего корня.
+Замер 2026-09-23, сервер с `ca` = цепочка vpn, клиент — сертификат цели
+`user_mtls` того же корня с приложенным промежуточным:
+
+| Сервер | Итог |
+|---|---|
+| без `tls-verify` | `Initialization Sequence Completed` — туннель поднят сертификатом ЧУЖОЙ цели |
+| с проверкой издателя выше | `VERIFY SCRIPT ERROR: depth=1, CN=Alatyr User mTLS Issuing CA`, туннеля нет |
+| законный сертификат `vpn` | `VERIFY SCRIPT OK: depth=1, CN=Alatyr VPN Issuing CA`, туннель поднят |
+
+Машинный сертификат `wifi` выдаётся без участия человека и тоже несёт
+`clientAuth` — без проверки издателя он открыл бы VPN.
+
+`crl-verify` у OpenVPN проверяет только **лист**: строки `VERIFY WARNING:
+depth=1 … unable to get certificate CRL` в журнале — предупреждение, а не
+отказ. Достаточно списка отзыва промежуточного УЦ vpn
+(`$VAULT_ADDR/v1/pki_vpn/crl/pem`).
+
+Клиент с ключом в чипе — строки, которые печатает `alatyr-agent vpn` на машине
+сотрудника (подробно — [Настройка VPN](vpn/setup.md#шаг-5-спросите-машину-чего-ей-не-хватает)):
 
 ```
+# Linux
 pkcs11-providers /usr/lib/x86_64-linux-gnu/pkcs11/libtpm2_pkcs11.so
 pkcs11-id 'IBM/SW%20%20%20TPM/.../alatyr-agent/<CKA_ID>'
-remote-cert-tls server
+# Windows
+cryptoapicert "THUMB:<отпечаток>"
+# macOS
+cert "<путь к сертификату>"
+management "/var/run/alatyr-openvpn-<uid>.sock" unix
+management-client-user <учётка сотрудника>
+management-hold
+management-external-key nopadding
 ```
 
 ### Отзыв у OpenVPN действует без перезагрузки службы
@@ -164,8 +216,8 @@ remote-cert-tls server
 1. Удостоверяющие центры целей разведены на стороне Alatyr — [шаг 1
    настройки mTLS](mtls/setup.md#шаг-1-отдельный-удостоверяющий-центр-для-цели).
    Без этого пункты 2 и ниже не помогут.
-2. В `ca-file` / `ssl_client_certificate` — вся цепочка: промежуточный **и** корень.
-3. Проверка издателя листа — отдельной строкой. Без неё разделения целей нет.
+2. В `ca-file` / `ssl_client_certificate` / `ca` — вся цепочка: промежуточный **и** корень.
+3. Проверка издателя листа — отдельной строкой (у OpenVPN — скрипт `tls-verify`). Без неё разделения целей нет.
 4. CRL — на промежуточный **и** на корневой удостоверяющий центр.
 5. Обновление CRL по расписанию; для прокси — с перезагрузкой, для OpenVPN без неё.
 6. Заголовок личности — замещать (`set-header`), а не добавлять.
