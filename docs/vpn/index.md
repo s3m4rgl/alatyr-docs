@@ -52,9 +52,14 @@ flowchart LR
 | | Linux | Windows | macOS |
 |---|---|---|---|
 | Где ключ | токен PKCS#11 поверх TPM (`tpm2-pkcs11`) | контейнер CNG `alatyr-agent-vpn`, `Microsoft Platform Crypto Provider` | Secure Enclave |
-| Как клиент его находит | `pkcs11-providers` + `pkcs11-id` | `cryptoapicert "THUMB:<отпечаток>"` из `CurrentUser\My` | модуль PKCS#11 OpenSC через считыватель агента |
-| Спрашивается ли PIN | да, PIN токена | нет | — |
-| Отчёт `alatyr-agent vpn` | есть | есть | **нет**, команда честно об этом говорит |
+| Как клиент его находит | `pkcs11-providers` + `pkcs11-id` | `cryptoapicert "THUMB:<отпечаток>"` из `CurrentUser\My` | интерфейс управления `openvpn`: хэш рукопожатия подписывает агент (`alatyr-agent vpn serve-key`) |
+| Клиент | `openvpn` 2.6 из пакетов | community **OpenVPN GUI** | `openvpn` 2.5+ из командной строки (homebrew или сборка из Tunnelblick) |
+| Спрашивается ли PIN | да, PIN токена | нет | нет |
+| Отчёт `alatyr-agent vpn` | есть | есть | есть |
+
+На Windows цели `vpn` **не нужны ни считыватель, ни смарт-карта**: ключ — это
+ключ TPM в контейнере CNG, а не карта. Поэтому всё, что касается драйвера
+считывателя и входа по карте, на VPN не влияет.
 
 Сертификат адресуется **отпечатком**, а не субъектом: у целей `user_mtls`,
 `k8s` и `vpn` субъект — один и тот же корпоративный адрес, и поиск по субъекту
