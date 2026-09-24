@@ -153,7 +153,9 @@ Registry и Keyholder API отдельно — в [Реестре ключей](
 | `POST /api/v1/devices/{serial}/purposes/{purpose}/decision` | Решение по цели, запрошенной с самого устройства |
 | `GET /api/v1/admin/purpose-requests` | Очередь целей, запрошенных с устройств и ждущих решения |
 | `PUT /api/v1/devices/{serial}/owner` | Сменить владельца устройства |
-| `PUT /api/v1/devices/{serial}/issue-policy-override` | Установить/снять override issue policy для устройства |
+| `PUT /api/v1/devices/{serial}/purpose-overrides` | Переопределить системную политику выдачи для устройства, по каждой цели отдельно (`наследовать`/`разрешить`/`запретить`) |
+| `GET /api/v1/admin/purpose-overrides/{purpose}/cost` | Сколько устройств и переопределений затронет массовый сброс переопределений цели |
+| `DELETE /api/v1/admin/purpose-overrides/{purpose}` | Сбросить переопределения цели у всего парка |
 | `GET /api/v1/devices/{serial}/logs` | Список снапшотов логов устройства |
 | `GET /api/v1/devices/{serial}/logs/{logId}` | Один снапшот лога (с содержимым) |
 | `DELETE /api/v1/devices/{serial}/logs/{logId}` | Удалить снапшот лога |
