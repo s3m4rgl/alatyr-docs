@@ -559,7 +559,7 @@ spctl -a -vvv -t install alatyr-agent-<версия>.pkg
 применяет и удаляет. Скопируйте блок целиком, подставив свои значения:
 
 ```bash
-PKG=./alatyr-agent-1.5.5.pkg
+PKG=./alatyr-agent-1.5.6.pkg
 SERVER=https://alatyr.your-domain.example
 CORP_DOMAIN=your-domain.example
 CORP_EMAIL=user@your-domain.example   # можно оставить пустым — тогда <логин>@CORP_DOMAIN
