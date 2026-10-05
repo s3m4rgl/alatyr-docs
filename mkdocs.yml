@@ -91,10 +91,12 @@ nav:
           - Обзор: mtls/index.md
           - Настройка: mtls/setup.md
           - Отзыв доступа: mtls/revocation.md
+          - mTLS внутри RDP-сессии: mtls/rdp.md
           - Нюансы и пределы: mtls/caveats.md
       - SSH-доступ:
           - Обзор: ssh/index.md
           - Настройка: ssh/setup.md
+          - "SSH-ключ без сертификата (ssh_key)": ssh/ssh-key.md
           - Отзыв доступа: ssh/revocation.md
           - Нюансы и пределы: ssh/caveats.md
           - Совмещение с FreeIPA: ssh/freeipa.md

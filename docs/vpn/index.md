@@ -54,7 +54,7 @@ flowchart LR
 | Где ключ | токен PKCS#11 поверх TPM (`tpm2-pkcs11`) | контейнер CNG `alatyr-agent-vpn`, `Microsoft Platform Crypto Provider` | Secure Enclave |
 | Как клиент его находит | `pkcs11-providers` + `pkcs11-id` | `cryptoapicert "THUMB:<отпечаток>"` из `CurrentUser\My` | интерфейс управления `openvpn`: хэш рукопожатия подписывает агент (`alatyr-agent vpn serve-key`) |
 | Клиент | `openvpn` 2.6 из пакетов | community **OpenVPN GUI** | `openvpn` 2.5+ из командной строки (homebrew или сборка из Tunnelblick) |
-| Спрашивается ли PIN | да, PIN токена | нет | нет |
+| Спрашивается ли PIN | при ступени «Без подтверждения» — нет; при «PIN самой карты» — да, в консоли `openvpn` | при «Без подтверждения» — нет; при «PIN самой карты» — да, в окне агента | при «Без подтверждения» — нет |
 | Отчёт `alatyr-agent vpn` | есть | есть | есть |
 
 На Windows цели `vpn` **не нужны ни считыватель, ни смарт-карта**: ключ — это
