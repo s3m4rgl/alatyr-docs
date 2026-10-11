@@ -212,15 +212,18 @@ echo '0 * * * * root /etc/ssh/alatyr-krl-update.sh' | sudo tee /etc/cron.d/alaty
 ## Шаг 6. Направьте `ssh` сотрудника на ключ в чипе
 
 Ключ живёт в чипе, и подаёт его агент Alatyr через свой сокет — а не обычный
-`ssh-agent` и не файл в `~/.ssh`. В большинстве случаев клиент `ssh` находит
-этот сокет сам:
+`ssh-agent` и не файл в `~/.ssh`. На Windows и Linux клиент `ssh` находит
+этот сокет сам, на macOS его нужно указать:
 
 - **Windows** — агент дописывает в `~/.ssh/config` строку `IdentityAgent`,
   указывающую на его канал;
 - **Linux** — пакет кладёт `/etc/profile.d/alatyr-agent-ssh-agent.sh`, и
   обычная оболочка входа (`bash`, `zsh`, `ksh`) получает `SSH_AUTH_SOCK`
   автоматически;
-- **macOS** — сокет поднимается в пользовательской сессии.
+- **macOS** — сокет поднимается в пользовательской сессии, но
+  `~/.ssh/config` агент **намеренно не правит**: это файл сотрудника, а
+  `SSH_AUTH_SOCK` в macOS занят системным `ssh-agent`. Как направить `ssh` на
+  сокет — в разделе [«macOS: строка в `~/.ssh/config` по хостам»](#macos-ssh-config) ниже.
 
 Проверьте, что клиент видит именно ключ Alatyr:
 
@@ -242,7 +245,8 @@ macOS:  ~/Library/Application Support/AlatyrAgent/ssh-agent.sock
 ```
 
 Способ 1 — строка в `~/.ssh/config` (действует всегда и переживает системный
-ключ-агент, и для `ssh`, и для `scp`, `rsync`, `git`):
+ключ-агент, и для `ssh`, и для `scp`, `rsync`, `git`; пример — для Linux, на
+macOS — [по хостам](#macos-ssh-config)):
 
 ```
 Host *
@@ -254,6 +258,47 @@ Host *
 ```bash
 export SSH_AUTH_SOCK=~/.local/state/alatyr-agent/ssh-agent.sock
 ```
+
+<a id="macos-ssh-config"></a>
+### macOS: строка в `~/.ssh/config` по хостам
+
+На Mac направляйте `ssh` на агент Alatyr **только для серверов, куда входят
+по ключу Alatyr**, — строкой `IdentityAgent` внутри их блока `Host`. Путь
+содержит пробел, поэтому он в кавычках:
+
+```
+Host server.example.com
+    IdentityAgent "~/Library/Application Support/AlatyrAgent/ssh-agent.sock"
+```
+
+Глобальную строку (`IdentityAgent` в начале файла или в `Host *`) на Mac **не
+используйте**, если у сотрудника есть свои ключи. Агент Alatyr не принимает
+чужие ключи: на `ssh-add` и на `AddKeysToAgent yes` он отвечает
+`agent refused operation`. Типовой `~/.ssh/config` с `Host *`,
+`AddKeysToAgent yes` и `UseKeychain yes` будет натыкаться на этот отказ при
+каждом подключении, а ключи из связки перестанут предлагаться.
+
+Если блоки хостов вынесены в отдельный файл и подключаются строкой
+`Include`, эта строка должна стоять **в самом начале** `~/.ssh/config`, до
+первого `Host` или `Match`: ниже она окажется внутри чужого блока и
+сработает не для всех хостов.
+
+**Результат.** Клиент выбирает сокет Alatyr для нужного хоста и видит ключ:
+
+```bash
+ssh -G server.example.com | grep -i '^identityagent'
+# строка identityagent с путём …/AlatyrAgent/ssh-agent.sock
+SSH_AUTH_SOCK="$HOME/Library/Application Support/AlatyrAgent/ssh-agent.sock" ssh-add -l
+# в списке есть ключ с пометкой (alatyr-agent)
+```
+
+Нет строки `identityagent` с путём Alatyr — блок `Host` не подхвачен:
+проверьте имя хоста и место строки `Include`.
+
+Окно агента при этом может показывать карточку «SSH-ключ: нужно ваше
+действие — клиент ssh наведён на другой агент»: оно проверяет настройку для
+`Host *`. Если сотрудник входит по ключу Alatyr только на выбранные серверы,
+карточку можно не выполнять.
 
 **Теперь пробуйте вход** с машины сотрудника:
 
