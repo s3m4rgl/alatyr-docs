@@ -12,6 +12,11 @@ Alatyr состоит из двух частей, и ставятся они н�
 Эта страница проводит через обе части по шагам. Каждый шаг заканчивается
 проверкой, которую можно выполнить и увидеть результат.
 
+!!! tip "Нужен сервер за несколько минут?"
+    [Быстрый старт](quickstart.md): архив выпуска, одна команда
+    `./first-up.sh` — и админка открывается по HTTPS. Эта страница — для
+    рабочей установки и всех остальных путей.
+
 Прежде чем разворачивать сервер в работу, прочитайте
 [Отказоустойчивость (HA)](ha.md) и [Расчёт ресурсов](sizing.md): ни один из
 составов ниже не разворачивает базу или Vault в отказоустойчивой
@@ -59,6 +64,7 @@ Windows и Linux, Secure Enclave на macOS либо поддерживаема�
 
 | Порт | Что на нём |
 |---|---|
+| `8443` | админка по HTTPS в наборе развёртывания из выпуска (меняется через `ALATYR_HTTPS_PORT`) |
 | `8090` | API сервера (`docker-compose.yml`, меняется через `ALATYR_API_PORT`) |
 | `3000` | админка (`docker-compose.yml`, меняется через `ALATYR_UI_PORT`) |
 | `13000` / `18090` | демо-состав (`docker-compose.demo.yml`): админка / API |
@@ -111,7 +117,9 @@ curl -s http://localhost:8090/api/v1/version
     ./first-up.sh
     ```
 
-    Это рекомендуемый путь для пилота. Подробности — `README.md` внутри набора.
+    Это рекомендуемый путь для пилота. По шагам, с проверкой и входом в
+    админку, — [Быстрый старт](quickstart.md); подробности — `README.md`
+    внутри набора.
 
 Остальные пути, и выбирать между ними нужно один раз:
 
@@ -125,16 +133,53 @@ curl -s http://localhost:8090/api/v1/version
 
 ### Вариант 1 — Docker Compose
 
-#### Шаг 1. Возьмите репозиторий и заполните `.env`
+#### Шаг 1. Возьмите файлы выпуска и заполните `.env`
+
+Всё берётся со страницы [выпуска](https://github.com/s3m4rgl/alatyr-docs/releases/latest),
+клонировать ничего не нужно. Какие файлы взять, зависит от того, как входят
+в админку:
+
+| Ваш случай | Что взять |
+|---|---|
+| Свой Vault, вход в админку по email и паролю | архив набора `alatyr-deploy-<версия>.tar.gz` и инструкция `OWN-VAULT.md` внутри него (ниже) |
+| Вход в админку через Keycloak SSO, Vault свой | исходные файлы того же выпуска — архив «Source code (tar.gz)» на странице выпуска: в наборе развёртывания вход только по email и паролю |
+
+**Свой Vault, набор развёртывания.** `OWN-VAULT.md` в архиве описывает, что
+завести в вашем Vault (промежуточные УЦ целей, роли, политику и AppRole
+сервера) и как подключить к нему набор: рядом с `docker-compose.yml`
+кладётся накладка `docker-compose.own-vault.yml`, которая отключает
+встроенный Vault, а в `.env` добавляются три значения:
 
 ```bash
-git clone https://github.com/s3m4rgl/alatyr-docs.git
-cd alatyr-docs
+VER=1.5.7      # номер выпуска со страницы выпуска
+tar -xzf alatyr-deploy-$VER.tar.gz
+cd alatyr-deploy-$VER
+cp .env.example .env
+$EDITOR .env   # ALATYR_OWN_VAULT_ADDR, ALATYR_VAULT_ROLE_ID, ALATYR_VAULT_SECRET_ID
+```
+
+Дальше — `./first-up.sh` (он придумает остальные секреты и напечатает
+учётные данные администратора) и каждая команда `docker compose` с обоими
+файлами: `-f docker-compose.yml -f docker-compose.own-vault.yml`, либо один
+раз `COMPOSE_FILE=docker-compose.yml:docker-compose.own-vault.yml` в `.env`.
+Накладке нужен Docker Compose 2.24 или новее. Встроенного HTTPS со своим
+Vault нет: админка отдаётся по http на `ALATYR_UI_PORT`, TLS перед ней
+ставите вы, адрес прокси — в `ALATYR_EXTRA_ORIGINS`. Подробности и
+проверки — разделы 3–5 `OWN-VAULT.md`; издатели в админке — шаг 4 ниже.
+
+**Keycloak SSO, исходные файлы выпуска.**
+
+```bash
+VER=1.5.7      # номер выпуска со страницы выпуска
+curl -fL -o alatyr-docs-$VER.tar.gz \
+  https://github.com/s3m4rgl/alatyr-docs/archive/refs/tags/v$VER.tar.gz
+tar -xzf alatyr-docs-$VER.tar.gz
+cd alatyr-docs-$VER
 cp .env.example .env
 $EDITOR .env
 ```
 
-Минимум, который нужно заполнить:
+Шаги ниже описывают этот состав. Минимум, который нужно заполнить:
 
 | Переменная | Что это |
 |---|---|
