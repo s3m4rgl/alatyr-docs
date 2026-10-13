@@ -152,7 +152,7 @@ curl -s http://localhost:8090/api/v1/version
 встроенный Vault, а в `.env` добавляются три значения:
 
 ```bash
-VER=1.5.7      # номер выпуска со страницы выпуска
+VER=1.6.0      # номер выпуска со страницы выпуска
 tar -xzf alatyr-deploy-$VER.tar.gz
 cd alatyr-deploy-$VER
 cp .env.example .env
@@ -185,7 +185,7 @@ Vault нет: админка отдаётся по http на `ALATYR_UI_PORT`, T
 **Состав без набора, исходные файлы выпуска.**
 
 ```bash
-VER=1.5.7      # номер выпуска со страницы выпуска
+VER=1.6.0      # номер выпуска со страницы выпуска
 curl -fL -o alatyr-docs-$VER.tar.gz \
   https://github.com/s3m4rgl/alatyr-docs/archive/refs/tags/v$VER.tar.gz
 tar -xzf alatyr-docs-$VER.tar.gz
@@ -715,7 +715,7 @@ spctl -a -vvv -t install alatyr-agent-<версия>.pkg
 применяет и удаляет. Скопируйте блок целиком, подставив свои значения:
 
 ```bash
-PKG=./alatyr-agent-1.5.7.pkg
+PKG=./alatyr-agent-1.6.0.pkg
 SERVER=http://alatyr.your-domain.example:8090   # адрес API с портом, см. ниже
 CORP_DOMAIN=your-domain.example
 CORP_EMAIL=user@your-domain.example   # можно оставить пустым — тогда <логин>@CORP_DOMAIN

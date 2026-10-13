@@ -73,6 +73,7 @@ nav:
       - Расчёт ресурсов: sizing.md
       - Отказоустойчивость (HA): ha.md
       - Известные ограничения: limitations.md
+      - История изменений: changelog.md
       - Лицензирование: licensing.md
   - Развёртывание и настройка:
       - Установка: installation.md

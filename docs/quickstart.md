@@ -40,7 +40,7 @@ flowchart LR
 имя с точкой в начале страница выпуска не принимает.
 
 ```bash
-VER=1.5.7      # номер выпуска со страницы выпуска
+VER=1.6.0      # номер выпуска со страницы выпуска
 curl -fLO https://github.com/s3m4rgl/alatyr-docs/releases/download/v$VER/alatyr-deploy-$VER.tar.gz
 sha256sum alatyr-deploy-$VER.tar.gz
 ```
