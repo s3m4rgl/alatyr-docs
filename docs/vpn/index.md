@@ -1,3 +1,7 @@
+---
+description: "VPN-сертификаты Alatyr для OpenVPN: ключ в TPM или Secure Enclave, выдача и отзыв из админки."
+---
+
 # Доступ по VPN
 
 ## Что это такое и что вам даёт

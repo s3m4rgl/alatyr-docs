@@ -1,11 +1,12 @@
 site_name: Alatyr — Документация
-site_description: Управление сертификатами и SSH-ключами устройств для 802.1X EAP-TLS и SSH-доступа
-site_url: https://s3m4rgl.github.io/alatyr-docs/
+site_description: Аппаратные сертификаты и ключи устройств — Wi-Fi и 802.1X, mTLS, SSH, VPN, Kubernetes, вход в домен по смарт-карте; ключ в TPM или Secure Enclave
+site_url: https://docs.alatyr.vnd-tech.ru/
 repo_url: https://github.com/s3m4rgl/alatyr-docs
 docs_dir: docs
 
 theme:
   name: material
+  custom_dir: overrides
   language: ru
   palette:
     - scheme: default
