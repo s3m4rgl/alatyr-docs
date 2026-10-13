@@ -61,7 +61,7 @@ Linux-агент и установка в Kubernetes поддерживаютс�
 | Время | синхронизировано на сервере и на машинах сотрудников |
 | Windows | проверены **Windows 10 LTSC** и **Windows 11**, x64, TPM 2.0. На Windows без интернета (LTSC) для окна агента нужен WebView2 Runtime: положите офлайн-установщик `MicrosoftEdgeWebView2RuntimeInstallerX64.exe` рядом с MSI — пакет поставит его сам |
 | macOS | macOS 14 (Sonoma) и новее. Пакет подписан и нотаризован Apple |
-| VPN-клиент | Windows — community **OpenVPN GUI** 2.6 (openvpn.net); macOS — `openvpn` 2.5+ из командной строки (`brew install openvpn`) |
+| VPN-клиент | Windows — community **OpenVPN GUI** 2.6 (openvpn.net); macOS — **OpenVPN Connect** (openvpn.net); модуль PKCS#11 для него входит в пакет агента |
 | Свой сервер для проверки | Linux-машина с `sshd` для проверки `ssh`; веб-приложение за nginx или haproxy для `user_mtls`; OpenVPN-сервер для `vpn` |
 
 ## 2. Порядок разворачивания
@@ -91,6 +91,8 @@ Linux-агент и установка в Kubernetes поддерживаютс�
    Для `vpn` на Windows добавьте ещё в «Профиль VPN» (меню админки) базовый
    профиль своего сервера доступа — без строки `cryptoapicert` и без данных
    сотрудника, это агент допишет сам ([VPN → Windows](vpn/setup.md#windows)).
+   Для `vpn` на macOS до назначения цели выберите у строки `vpn` защиту
+   ключа «PIN самой карты» ([VPN → macOS](vpn/setup.md#macos)).
    Затем «Настройки → Политика выдачи» — включите `ssh`, `user_mtls` и `vpn`:
    на свежей установке включён только Wi-Fi.
    Для Windows-машин без Windows Hello (например, LTSC без PIN и биометрии)
@@ -143,7 +145,7 @@ Linux-агент и установка в Kubernetes поддерживаютс�
 | `user_mtls` | Одобрить заявку `user_mtls`; на Windows открыть `certmgr.msc` → «Личное» → «Сертификаты», на macOS — «Связка ключей» → связка входа пользователя | Сертификат сотрудника в хранилище **пользователя** (не машины), издатель — `Alatyr User mTLS Issuing CA` |
 | `user_mtls` | Открыть в браузере сотрудника приложение за приёмником mTLS ([mTLS → Настройка](mtls/setup.md#шаг-5-настройте-ваше-приложение)) | Приложение пускает и видит личность сотрудника; сертификат `wifi` той же машины получает `403` ([шаг 6](mtls/setup.md#шаг-6-проверьте-обе-половины)) |
 | `vpn` (Windows) | Одобрить заявку `vpn` (профиль VPN администратор задал в шаге 3) — агент сам положит готовый профиль в `C:\Program Files\OpenVPN\config\`; сотруднику остаётся открыть OpenVPN GUI и нажать «Подключить» ([VPN → Windows](vpn/setup.md#windows)) | Значок OpenVPN GUI зелёный, в журнале клиента `Initialization Sequence Completed`, на VPN-сервере — имя сотрудника; PIN не спрашивается |
-| `vpn` (macOS) | Выполнить `alatyr-agent vpn`, вписать напечатанные строки в профиль, поднять `sudo openvpn --config <профиль>` и в сеансе сотрудника `alatyr-agent vpn serve-key` ([VPN → macOS](vpn/setup.md#macos)) | Туннель поднимается, ключ не покидает Secure Enclave |
+| `vpn` (macOS) | До выдачи выбрать для `vpn` защиту ключа «PIN самой карты»; после выдачи задать PIN карты в окне агента, проверить `alatyr-agent vpn`, импортировать профиль в OpenVPN Connect и выбрать в нём карту Alatyr ([VPN → macOS](vpn/setup.md#macos)) | Connect спрашивает PIN карты и подключается, ключ не покидает Secure Enclave |
 | любая | Отклонить заявку, затем «Выписать цель» заново в окне агента (или `alatyr-agent reissue <цель>`) | Появляется новая заявка, после одобрения цель выдаётся |
 
 ## 4. Обновление с предыдущей версии
@@ -188,7 +190,8 @@ Linux-агент и установка в Kubernetes поддерживаютс�
     | macOS | — (агент целиком работает от пользователя) | `~/Library/Logs/AlatyrAgent/agent.log`, рядом `sshagent.log` |
 
     Журнал установки MSI — если ставили с `/l*v C:\Windows\Temp\alatyr-msi.log`;
-    на macOS — `/var/log/install.log`.
+    на macOS — `/var/log/alatyr-agent-install.log` (сценарий установки) и
+    `/var/log/install.log`.
 
 4. **Журнал сервера** за время проблемы, из каталога набора:
 

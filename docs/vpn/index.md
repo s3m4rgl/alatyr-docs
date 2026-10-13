@@ -55,10 +55,10 @@ flowchart LR
 
 | | Linux | Windows | macOS |
 |---|---|---|---|
-| Где ключ | токен PKCS#11 поверх TPM (`tpm2-pkcs11`) | контейнер CNG `alatyr-agent-vpn`, `Microsoft Platform Crypto Provider` | Secure Enclave |
-| Как клиент его находит | `pkcs11-providers` + `pkcs11-id` | `cryptoapicert "THUMB:<отпечаток>"` из `CurrentUser\My` | интерфейс управления `openvpn`: хэш рукопожатия подписывает агент (`alatyr-agent vpn serve-key`) |
-| Клиент | `openvpn` 2.6 из пакетов | community **OpenVPN GUI** | `openvpn` 2.5+ из командной строки (homebrew или сборка из Tunnelblick) |
-| Спрашивается ли PIN | да, PIN токена | нет | нет |
+| Где ключ | токен PKCS#11 поверх TPM (`tpm2-pkcs11`) | контейнер CNG `alatyr-agent-vpn`, `Microsoft Platform Crypto Provider` | Secure Enclave, под PIN карты |
+| Как клиент его находит | `pkcs11-providers` + `pkcs11-id` | `cryptoapicert "THUMB:<отпечаток>"` из `CurrentUser\My` | смарт-карта агента через модуль PKCS#11 из пакета (`~/.pkcs11_modules/alatyr-opensc-pkcs11.dylib`) |
+| Клиент | `openvpn` 2.6 из пакетов | community **OpenVPN GUI** | **OpenVPN Connect**; либо `openvpn` 2.5+ с PKCS#11 из командной строки (homebrew) |
+| Спрашивается ли PIN | да, PIN токена | нет | да, PIN карты |
 | Отчёт `alatyr-agent vpn` | есть | есть | есть |
 
 На Windows цели `vpn` **не нужны ни считыватель, ни смарт-карта**: ключ — это

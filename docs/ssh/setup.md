@@ -220,13 +220,19 @@ echo '0 * * * * root /etc/ssh/alatyr-krl-update.sh' | sudo tee /etc/cron.d/alaty
 - **Linux** — пакет кладёт `/etc/profile.d/alatyr-agent-ssh-agent.sh`, и
   обычная оболочка входа (`bash`, `zsh`, `ksh`) получает `SSH_AUTH_SOCK`
   автоматически;
-- **macOS** — сокет поднимается в пользовательской сессии.
+- **macOS** — сокет поднимается в пользовательской сессии, но
+  `~/.ssh/config` агент **не правит** (это файл сотрудника), а
+  `SSH_AUTH_SOCK` в сеансе указывает на системный ssh-agent. Клиент нужно
+  направить на сокет Alatyr явно — способом 1 ниже.
 
 Проверьте, что клиент видит именно ключ Alatyr:
 
 ```bash
 ssh-add -l
 # в списке должен быть ключ с пометкой (alatyr-agent)
+
+# macOS — спросите сокет Alatyr напрямую:
+SSH_AUTH_SOCK="$HOME/Library/Application Support/AlatyrAgent/ssh-agent.sock" ssh-add -l
 ```
 
 **Если ключа в списке нет** — клиент смотрит на чужой ssh-agent. Так бывает,
@@ -241,13 +247,44 @@ Linux:  ~/.local/state/alatyr-agent/ssh-agent.sock
 macOS:  ~/Library/Application Support/AlatyrAgent/ssh-agent.sock
 ```
 
-Способ 1 — строка в `~/.ssh/config` (действует всегда и переживает системный
-ключ-агент, и для `ssh`, и для `scp`, `rsync`, `git`):
+Способ 1 — строка `IdentityAgent` в `~/.ssh/config` **только для тех
+серверов, куда входят ключом Alatyr** (действует всегда и переживает
+системный ключ-агент, и для `ssh`, и для `scp`, `rsync`, `git`). Блок ниже
+кладёт настройки Alatyr в отдельный файл и подключает его строкой `Include`
+в самом начале `~/.ssh/config` — до первого `Host`/`Match`, иначе `Include`
+окажется внутри чужого блока. Прежний файл сохраняется копией, повторный
+запуск строку не дублирует. Подставьте имя своего сервера и сокет своей
+платформы:
 
+```bash
+HOST=server.example.com
+SOCK="$HOME/Library/Application Support/AlatyrAgent/ssh-agent.sock"   # Linux: $HOME/.local/state/alatyr-agent/ssh-agent.sock
+
+mkdir -p ~/.ssh/alatyr && chmod 700 ~/.ssh/alatyr
+printf 'Host %s\n    IdentityAgent "%s"\n' "$HOST" "$SOCK" >> ~/.ssh/alatyr/config
+test -s ~/.ssh/alatyr/config || echo "ПРОВАЛ: ~/.ssh/alatyr/config пуст"
+
+touch ~/.ssh/config && chmod 600 ~/.ssh/config
+if ! grep -qxF 'Include ~/.ssh/alatyr/config' ~/.ssh/config; then
+  cp ~/.ssh/config ~/.ssh/config.bak-alatyr
+  { echo 'Include ~/.ssh/alatyr/config'; echo; cat ~/.ssh/config.bak-alatyr; } > ~/.ssh/config
+fi
+test -s ~/.ssh/config || echo "ПРОВАЛ: ~/.ssh/config пуст — верните копию ~/.ssh/config.bak-alatyr"
+ssh -G "$HOST" | grep '^hostname '        # имя или адрес сервера
+ssh -G "$HOST" | grep -i '^identityagent ' # сокет Alatyr
 ```
-Host *
-    IdentityAgent ~/.local/state/alatyr-agent/ssh-agent.sock
-```
+
+Если `identityagent` в выводе другой — выше по файлу стоит свой
+`IdentityAgent` (например, в `Host *`), и он побеждает: `ssh` берёт первое
+встреченное значение. Убедитесь, что строка `Include` — первая в файле.
+
+!!! warning "Не направляйте на агент Alatyr все подключения через `Host *`"
+    Агент Alatyr не принимает чужие ключи: на `ssh-add` он отвечает `agent
+    refused operation`. Если `IdentityAgent` на сокет Alatyr стоит в
+    `Host *` вместе с привычными `AddKeysToAgent yes` и `UseKeychain yes`,
+    `ssh` натыкается на этот отказ при каждом подключении, а собственные
+    ключи сотрудника из связки ключей перестают предлагаться серверам.
+    Поэтому — только для конкретных серверов, как в блоке выше.
 
 Способ 2 — переменная окружения (в текущей оболочке или в профиле входа):
 

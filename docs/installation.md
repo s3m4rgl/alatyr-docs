@@ -512,8 +512,10 @@ Root CA`. Вход под верным паролем администратор
 
 | Как поставлен сервер | Адрес для агента |
 |---|---|
-| Набор развёртывания из выпуска, без своего обратного прокси | `http://<адрес машины>:8090` — порт `ALATYR_API_PORT` из `.env` |
-| Перед API стоит ваш обратный прокси с TLS | адрес прокси, например `https://alatyr.your-domain.example` |
+| Перед API стоит ваш обратный прокси с TLS (рекомендуется) | адрес прокси, например `https://alatyr.your-domain.example` |
+| Набор развёртывания из выпуска, без своего обратного прокси | `http://<адрес машины>:8090` — порт `ALATYR_API_PORT` из `.env`. Только для пробы в закрытой сети: без TLS агент на каждом цикле предупреждает в журнале, что данные идут незашифрованными |
+
+Во всех примерах ниже адрес — `https://` за обратным прокси.
 
 Порт пишите явно. Адрес `https://…` без порта означает порт 443, а при
 установке набором без прокси на 443 не слушает ничего: агент встаёт, но до
@@ -549,17 +551,17 @@ Root CA`. Вход под верным паролем администратор
 
 Пакеты `deb` и `rpm` принимают параметры установки **переменными окружения**:
 имена те же, что в `config.env` — `ALATYR_SERVER`, `ALATYR_CORP_DOMAIN`,
-`ALATYR_CORP_EMAIL`. Адрес сервера — с портом, как описано
-[выше](#агент): здесь пример для набора развёртывания без обратного прокси.
+`ALATYR_CORP_EMAIL`. Адрес сервера — как описано [выше](#агент): здесь
+пример для сервера за обратным прокси с TLS.
 
 ```bash
 # Debian, Ubuntu
-sudo ALATYR_SERVER="http://alatyr.your-domain.example:8090" \
+sudo ALATYR_SERVER="https://alatyr.your-domain.example" \
      ALATYR_CORP_DOMAIN="your-domain.example" \
      apt install ./alatyr-agent_<версия>_amd64.deb
 
 # Fedora, RHEL, Alma, Rocky
-sudo ALATYR_SERVER="http://alatyr.your-domain.example:8090" \
+sudo ALATYR_SERVER="https://alatyr.your-domain.example" \
      ALATYR_CORP_DOMAIN="your-domain.example" \
      dnf install ./alatyr-agent-<версия>-1.x86_64.rpm
 ```
@@ -580,7 +582,7 @@ tar xzf alatyr-agent-linux-<версия>.tar.gz -C alatyr-agent
 cd alatyr-agent
 sha256sum -c SHA256SUMS.txt
 sudo ./install.sh \
-    --server "http://alatyr.your-domain.example:8090" \
+    --server "https://alatyr.your-domain.example" \
     --corp-domain "your-domain.example"
 ```
 
@@ -701,8 +703,8 @@ sudo /usr/local/bin/alatyr-agent status
 подписан Developer ID и нотаризован Apple. Проверить это до установки:
 
 ```bash
-spctl -a -vvv -t install alatyr-agent-<версия>.pkg
-# alatyr-agent-<версия>.pkg: accepted
+spctl -a -vvv -t install "$HOME/Downloads/alatyr-agent-<версия>.pkg"
+# …/alatyr-agent-<версия>.pkg: accepted
 # source=Notarized Developer ID
 ```
 
@@ -710,33 +712,67 @@ spctl -a -vvv -t install alatyr-agent-<версия>.pkg
 него агент встаёт ненастроенным и к серверу не обращается, о чём пишет в
 свой журнал.
 
-#### Шаг 2. Поставьте пакет вместе с параметрами
+#### Шаг 2. Проверьте машину и связь с сервером
+
+```bash
+sw_vers -productVersion        # 14.0 или больше; на macOS 13 и старше пакет не ставится
+SERVER=https://alatyr.your-domain.example   # адрес API сервера, см. «Какой адрес сервера давать агенту»
+curl -s "$SERVER/health" && echo "OK   сервер отвечает" || echo "ПРОВАЛ: сервер по адресу $SERVER недоступен"
+```
+
+Проверьте с Mac ещё порт списков отзыва и сертификатов УЦ
+(`ALATYR_PKI_PORT`, по умолчанию `8200`):
+
+```bash
+nc -z -G5 alatyr.your-domain.example 8200 && echo "OK   8200/tcp" || echo "ПРОВАЛ 8200/tcp"
+```
+
+`nc -z` годится только для TCP. Порт OpenVPN (обычно `1194/udp`) так не
+проверить: UDP на пустой пакет не отвечает, и `nc -u -z` печатает одно и то
+же и при открытом, и при закрытом порте. Его доступность проверяет само
+подключение VPN.
+
+#### Шаг 3. Поставьте пакет вместе с параметрами
 
 Штатный `installer` в macOS не умеет передавать параметры пакету, поэтому
 они кладутся заранее в файл предварительных значений
-`/Library/Application Support/AlatyrAgent/config.env.preseed`. Сценарий
-установки пакета читает его (только если владелец файла — `root`),
-применяет и удаляет. Скопируйте блок целиком, подставив свои значения:
+`/Library/Application Support/AlatyrAgent/config.env.preseed`. Скопируйте
+блок целиком, подставив свои значения. Путь к пакету — **полный**, чтобы
+блок работал из любого каталога:
 
 ```bash
-PKG=./alatyr-agent-1.6.0.pkg
-SERVER=http://alatyr.your-domain.example:8090   # адрес API с портом, см. ниже
+PKG="$HOME/Downloads/alatyr-agent-1.6.0.pkg"   # полный путь к скачанному пакету
+SERVER=https://alatyr.your-domain.example     # адрес API сервера, см. ниже
 CORP_DOMAIN=your-domain.example
-CORP_EMAIL=user@your-domain.example   # можно оставить пустым — тогда <логин>@CORP_DOMAIN
+CORP_EMAIL=user@your-domain.example           # можно оставить пустым — тогда <логин>@CORP_DOMAIN
 
-sudo mkdir -p "/Library/Application Support/AlatyrAgent"
+CFG="/Library/Application Support/AlatyrAgent"
+test -s "$PKG" || echo "ПРОВАЛ: пакета $PKG нет — поправьте PKG"
+sudo mkdir -p "$CFG"
 printf 'ALATYR_SERVER="%s"\nALATYR_CORP_DOMAIN="%s"\nALATYR_CORP_EMAIL="%s"\n' \
     "$SERVER" "$CORP_DOMAIN" "$CORP_EMAIL" |
-  sudo tee "/Library/Application Support/AlatyrAgent/config.env.preseed" >/dev/null
-sudo chmod 600 "/Library/Application Support/AlatyrAgent/config.env.preseed"
-sudo installer -pkg "$PKG" -target /
+  sudo tee "$CFG/config.env.preseed" >/dev/null
+sudo chmod 600 "$CFG/config.env.preseed"
+sudo test -s "$CFG/config.env.preseed" && test -s "$PKG" \
+  && sudo installer -pkg "$PKG" -target / \
+  || echo "ПРОВАЛ: установка не прошла — проверьте PKG, файл предварительных значений и /var/log/alatyr-agent-install.log"
 ```
 
-**`SERVER` — адрес API сервера, а не админки.** При установке набором
-развёртывания без обратного прокси это `http://<адрес машины>:8090` (порт
-`ALATYR_API_PORT` из `.env` сервера), за обратным прокси — адрес прокси.
-Без порта `https://…` означает порт 443, на котором при чистой установке
-набором ничего не слушает. Подробнее — [какой адрес давать агенту](#агент).
+**`SERVER` — адрес API сервера, а не админки**, по умолчанию `https://`:
+адрес вашего обратного прокси с TLS. Адрес `http://<адрес машины>:8090`
+(набор без прокси) годится только для пробы в закрытой сети: агент тогда
+на каждом цикле пишет в журнал предупреждение, что данные идут
+незашифрованными. Подробнее — [какой адрес давать агенту](#агент).
+
+**Что происходит с файлом предварительных значений.** Сценарий установки
+читает его (только если владелец файла — `root`, иначе файл игнорируется),
+переносит значения в `/Library/Application Support/AlatyrAgent/config.env`
+под ключами `ALATYR_SERVER`, `ALATYR_CORP_DOMAIN`, `ALATYR_CORP_EMAIL` и
+**удаляет** `config.env.preseed`. Поэтому после установки этого файла нет —
+так и должно быть: дальше настройки агента живут только в `config.env`.
+Чтобы переустановить пакет с другими значениями, файл кладётся заново
+перед `installer`. Журнал сценария установки —
+`/var/log/alatyr-agent-install.log`.
 
 Прежние имена ключей `WIFI_CERT_SERVER`, `CORP_DOMAIN`, `CORP_EMAIL` в
 файле тоже понимаются; если в файле есть оба имени, сильнее `ALATYR_*`.
@@ -750,14 +786,129 @@ sudo installer -pkg "$PKG" -target /
     (`<короткое имя>@<корпоративный домен>` либо атрибут из каталога, если Mac
     включён в домен). Задавайте почту только файлом предварительных значений.
 
-**Результат.** `launchctl list | grep semargl` показывает загруженный
-`LaunchAgent`, а команда
+**Результат.** Проверьте из сеанса сотрудника через минуту-две после
+установки:
 
 ```bash
-/Applications/alatyr-agent.app/Contents/MacOS/alatyr-agent status
+A=/Applications/alatyr-agent.app/Contents/MacOS/alatyr-agent
+CFG="/Library/Application Support/AlatyrAgent"
+"$A" version                       # версия как в имени пакета
+sudo test ! -e "$CFG/config.env.preseed" \
+  && sudo grep -Eq '^(ALATYR|WIFI_CERT)_SERVER=' "$CFG/config.env" \
+  && echo "OK   параметры перенесены в config.env" \
+  || echo "ПРОВАЛ: параметры не применены — /var/log/alatyr-agent-install.log"
+launchctl list | grep com.semargl.alatyr.agent
+"$A" status                        # адрес сервера; устройство ждёт одобрения
 ```
 
-печатает состояние. Журнал агента — `~/Library/Logs/AlatyrAgent/agent.log`.
+`launchctl list` показывает две строки, и во второй колонке (код последнего
+выхода) у обеих — `0`:
+
+```
+-       0   com.semargl.alatyr.agent            # PID «-» — норма
+<PID>   0   com.semargl.alatyr.agent.sshagent   # постоянный процесс
+```
+
+Основной процесс агента запускается раз в 60 секунд, делает свою работу за
+несколько секунд и выходит, поэтому PID у первой строки почти всегда «-», а
+`pgrep` его обычно не находит — это не сбой. Работу агента проверяйте
+`launchctl list`, а не поиском процесса. Постоянно работают процесс
+ssh-agent (вторая строка), значок в строке меню и расширение смарт-карты.
+Системной службы в `/Library/LaunchDaemons` у агента на Mac нет. Журнал
+агента — `~/Library/Logs/AlatyrAgent/agent.log`.
+
+**Уведомления.** При первом запуске значка macOS спрашивает, разрешить ли
+`alatyr-agent` отправлять уведомления, — разрешите. Без этого просьбы
+агента к сотруднику (подтвердить профиль Wi-Fi, задать PIN карты) молча
+копятся в окне агента. Пропустили — «Системные настройки → Уведомления →
+`alatyr-agent` → Разрешить уведомления». Проверка:
+
+```bash
+"$A" notify-self-test && echo "OK   уведомления разрешены" || echo "ПРОВАЛ: уведомления запрещены"
+```
+
+#### Шаг 4. Одобрите устройство и проверьте выданное по целям
+
+Одобрение — в админке, как для любой платформы ([Управление и
+роли](administration.md#одобрение-отклонение-и-отзыв)). После одобрения
+проверьте на Mac, что выдано. `status` построчно по целям **не** печатает,
+для этого есть две другие команды:
+
+```bash
+"$A" purposes      # строка на цель: <цель> <состояние> (<кто решил>) — <вердикт>
+"$A" identities    # где лежит сертификат каждой цели, срок, отпечаток, чем им пользоваться
+```
+
+Вердикты в `purposes`:
+
+| Вердикт | Что значит |
+|---|---|
+| `ready`, `works` | цель выдана и готова |
+| `needs_you` | ждёт действия сотрудника: для `wifi` — подтвердить профиль (шаг 5), для `vpn` — задать PIN карты |
+| `waiting_admin` | заявка ещё не одобрена |
+| `not_for_os` | цель к macOS неприменима |
+
+#### Шаг 5. Сотрудник подтверждает профили Wi-Fi и проводного 802.1X
+
+Как только выдан сертификат `wifi`, агент открывает установку профилей
+Wi-Fi и проводной сети. **macOS ставит такой профиль только после
+подтверждения человеком**, а загруженный и неподтверждённый профиль через
+несколько минут забывает.
+
+1. «Системные настройки → Основные → VPN и управление устройствами». В
+   разных версиях macOS пункт называется по-разному — надёжнее набрать
+   «профил» в поиске Системных настроек.
+2. В загруженных профилях — профиль Alatyr → «Установить…» → пароль
+   пользователя Mac. Повторите для второго профиля, если он есть.
+
+Пропустили — агент повторит запрос сам (через 10 минут, затем через час и
+через сутки), а сразу — кнопкой в окне агента.
+
+**Результат:**
+
+```bash
+"$A" status | grep '^WiFiProfile:'   # пусто — профиль установлен
+{ profiles -L; sudo profiles -L; } 2>/dev/null | grep -i alatyr   # профиль Alatyr в списке
+```
+
+В `purposes` у `wifi` — `ready` или `works`, а не `needs_you`. Если `profiles -L`
+профиля Alatyr не показывает, а `WiFiProfile:` в `status` есть — профиль не
+подтверждён, вернитесь к пункту 1.
+
+#### Корень Alatyr на Mac — для `user_mtls` в браузере
+
+Браузер предложит сотруднику его сертификат `user_mtls`, только если Mac
+доверяет корню `Alatyr Root CA` ([подробнее](pilot.md), шаг 5). Если корень
+не раздаётся через MDM, доверьте его вручную, сначала сверив отпечаток с
+тем, что напечатал `first-up.sh`. Разные версии OpenSSL печатают строку
+отпечатка по-разному (`SHA256 Fingerprint=` или `sha256 Fingerprint=`),
+поэтому сравнивается только значение после `=` и без учёта регистра:
+
+```bash
+ROOT="$HOME/Downloads/alatyr-root.pem"     # полный путь, куда сохранить корень
+FP_EXPECTED="AB:CD:…"                      # отпечаток из блока first-up.sh
+curl -s -o "$ROOT" http://alatyr.your-domain.example:8200/v1/pki/ca/pem
+test -s "$ROOT" || echo "ПРОВАЛ: корень не скачан — проверьте адрес и порт 8200"
+fp=$(openssl x509 -in "$ROOT" -noout -fingerprint -sha256 | cut -d= -f2 | tr 'a-f' 'A-F')
+want=$(printf '%s' "$FP_EXPECTED" | tr 'a-f' 'A-F')
+if [ -n "$fp" ] && [ "$fp" = "$want" ]; then
+  echo "OK   отпечаток совпал"
+  sudo security add-trusted-cert -d -r trustRoot \
+    -k /Library/Keychains/System.keychain "$ROOT"
+else
+  echo "ПРОВАЛ: отпечаток $fp не совпал с ожидаемым — корень не ставить"
+fi
+```
+
+#### SSH и VPN на Mac
+
+- **SSH.** Агент поднимает свой ssh-agent, но `~/.ssh/config` сотрудника не
+  правит. Как направить на него `ssh` — [SSH → шаг
+  6](ssh/setup.md#шаг-6-направьте-ssh-сотрудника-на-ключ-в-чипе), абзац про
+  macOS.
+- **VPN.** Модуль PKCS#11 для OpenVPN Connect входит в пакет агента, ставить
+  OpenSC отдельно не нужно. Как подключаться и что настроить в админке —
+  [VPN → macOS](vpn/setup.md#macos).
 
 #### Сменить адрес сервера после установки
 
@@ -767,7 +918,7 @@ sudo installer -pkg "$PKG" -target /
 
 ```bash
 sudo vi "/Library/Application Support/AlatyrAgent/config.env"
-# ALATYR_SERVER="http://alatyr.your-domain.example:8090"
+# ALATYR_SERVER="https://alatyr.your-domain.example"
 ```
 
 Агент перечитывает файл при каждом запуске, а запускается он раз в 60
@@ -783,7 +934,7 @@ launchctl kickstart -k gui/$(id -u)/com.semargl.alatyr.agent
 появляется строка `Запускаем агент → <новый адрес>`.
 
 Другой путь, удобный для MDM, — повторная установка пакета с файлом
-предварительных значений, как в шаге 2. Значения из этого файла сильнее
+предварительных значений, как в шаге 3. Значения из этого файла сильнее
 текущего `config.env`; ключи, которых в нём нет, берутся из текущего файла,
 а **пустое** значение ничего не стирает — оно означает «не задано».
 
@@ -802,7 +953,7 @@ Developer ID вместо поставляемого пакета.
    серверы Apple есть `SKIP_NOTARIZE=1`.
 
 **Результат.** В каталоге `dist/` лежит `.pkg`, и `spctl -a -vvv -t install`
-на нём отвечает `accepted`. Ставится он так же, как в шаге 2.
+на нём отвечает `accepted`. Ставится он так же, как в шаге 3.
 
 ### Windows
 
@@ -845,13 +996,13 @@ Certification Authorities**.
 
 ```powershell
 msiexec /i alatyr-agent-<версия>-x64.msi /qn `
-    ALATYR_SERVER=http://alatyr.your-domain.example:8090 `
+    ALATYR_SERVER=https://alatyr.your-domain.example `
     ALATYR_CORP_DOMAIN=your-domain.example `
     ALATYR_CORP_EMAIL=user@your-domain.example
 ```
 
-`ALATYR_SERVER` — адрес API сервера с портом: при установке набором без
-обратного прокси `http://<адрес машины>:8090`, за прокси — его адрес (см.
+`ALATYR_SERVER` — адрес API сервера: за обратным прокси с TLS — его адрес,
+при пробной установке набором без прокси — `http://<адрес машины>:8090` (см.
 [какой адрес давать агенту](#агент)).
 
 Полезные ключи установки:

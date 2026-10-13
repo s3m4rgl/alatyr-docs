@@ -119,8 +119,8 @@ location / {
 
 Замерено на `openvpn 2.6.14` (Debian), сентябрь 2026. Клиенты — `openvpn` с
 ключом, который не покидает чип: на Linux через `tpm2-pkcs11`, на Windows через
-`cryptoapicert` (ключ TPM в CNG), на macOS через интерфейс управления (ключ
-Secure Enclave).
+`cryptoapicert` (ключ TPM в CNG), на macOS через смарт-карту агента и модуль
+PKCS#11 (ключ Secure Enclave под PIN).
 
 Сервер, минимум:
 
@@ -182,12 +182,9 @@ pkcs11-providers /usr/lib/x86_64-linux-gnu/pkcs11/libtpm2_pkcs11.so
 pkcs11-id 'IBM/SW%20%20%20TPM/.../alatyr-agent/<CKA_ID>'
 # Windows
 cryptoapicert "THUMB:<отпечаток>"
-# macOS
-cert "<путь к сертификату>"
-management "/var/run/alatyr-openvpn-<uid>.sock" unix
-management-client-user <учётка сотрудника>
-management-hold
-management-external-key nopadding
+# macOS, OpenVPN Connect — строк ключа в профиле нет, карту выбирают в Connect;
+# macOS, openvpn из командной строки — строки pkcs11-providers и pkcs11-id
+#   печатает `alatyr-agent vpn`
 ```
 
 ### Отзыв у OpenVPN действует без перезагрузки службы
