@@ -64,6 +64,7 @@ VAULT_SECRET_ID_FILE=/run/secrets/vault_secret_id
 |---|---|---|---|
 | `ALATYR_SERVER_PORT` | `WIFI_CERT_SERVER_PORT`, `SERVER_PORT` | `8090` | Порт HTTP. |
 | `ALATYR_DB_URL` | `WIFI_CERT_DB_URL`, `DB_URL` | — (**обязательна**) | Строка подключения к PostgreSQL, например `postgres://user:pass@host:5432/alatyr`. |
+| `ALATYR_DB_SSLROOTCERT` | — | — | Путь к PEM корня УЦ, которым подписан TLS вашего PostgreSQL, когда строка подключения собирается из частей `ALATYR_DB_HOST`, `ALATYR_DB_PORT`, `ALATYR_DB_USER`, `ALATYR_DB_PASSWORD`, `ALATYR_DB_NAME`, `ALATYR_DB_SSLMODE` (так делает набор развёртывания): уходит в неё параметром `sslrootcert`. Нужен при `verify-ca`/`verify-full`, если сертификат базы выпущен не публичным УЦ. Заданный, но нечитаемый файл — отказ запуска. См. [Своё или внешнее](dependencies.md#ваш-postgresql). |
 | `ALATYR_CORS_ORIGINS` | `WIFI_CERT_CORS_ORIGINS`, `CORS_ORIGINS` | — | Разрешённые CORS-origin через запятую. Пусто — только localhost-порты для разработки. |
 | `ALATYR_TRUSTED_PROXIES` | — | — | CIDR обратных прокси, чьему `X-Forwarded-For` сервер верит. См. пояснение ниже. |
 | `ALATYR_LOG_LEVEL` | `WIFI_CERT_LOG_LEVEL`, `LOG_LEVEL` | `info` | `debug` \| `info` \| `warn` \| `error`. |
