@@ -207,6 +207,7 @@ $EDITOR .env
 | `VAULT_ADDR` плюс `VAULT_ROLE_ID` и `VAULT_SECRET_ID` (либо `VAULT_TOKEN`) | доступ к вашему Vault. AppRole предпочтительнее статического токена и имеет над ним приоритет |
 | `ALATYR_LOCAL_AUTH_ENABLED`, `ALATYR_LOCAL_ADMIN_EMAIL`, `ALATYR_LOCAL_ADMIN_PASSWORD` | первый администратор, если вы не используете Keycloak |
 | `KEYCLOAK_URL`, `KEYCLOAK_REALM`, `KEYCLOAK_CLIENT_ID`, `KEYCLOAK_CLIENT_SECRET` | если используете Keycloak SSO |
+| `ALATYR_DIRECTORY_URL`, `ALATYR_DIRECTORY_BIND_DN`, `ALATYR_DIRECTORY_BIND_PASSWORD`, `ALATYR_DIRECTORY_BASE_DN` | если планируете вход в домен по карте (`ad_logon`): каталог AD, у которого сервер узнаёт SID сотрудника, и учётная запись только для чтения — [Откуда берутся UPN и SID](ad-logon/identity.md#настройка) |
 
 Полный список переменных с умолчаниями — [Конфигурация](configuration.md).
 
@@ -283,6 +284,15 @@ curl -s http://localhost:8090/api/v1/version
 ```bash
 docker compose logs alatyr-server | grep -i vault
 ```
+
+!!! note "Вход в домен по карте требует ещё каталога"
+    Цель `ad_logon` выписывается не через Vault, а через ваш ADCS (SCEP), и
+    сертификат для неё пригоден ко входу только с SID сотрудника, который
+    сервер берёт у каталога AD. Если цель вам нужна, заполните в `.env`
+    переменные `ALATYR_DIRECTORY_*` и проверьте строку `каталог настроен` в
+    журнале сервера: `docker compose logs alatyr-server | grep -i каталог`.
+    Весь порядок — [Вход в домен по смарт-карте → Настройка](ad-logon/setup.md),
+    принцип — [Откуда берутся UPN и SID](ad-logon/identity.md).
 
 #### Шаг 5. Смените пароль первого администратора
 

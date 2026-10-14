@@ -104,6 +104,7 @@ nav:
           - Реестр ключей и Keyholder API: ssh/registry.md
       - Вход в домен по смарт-карте:
           - Обзор: ad-logon/index.md
+          - Откуда берутся UPN и SID: ad-logon/identity.md
           - Настройка: ad-logon/setup.md
           - Вход по RDP: ad-logon/rdp.md
           - Пределы и нюансы: ad-logon/caveats.md
