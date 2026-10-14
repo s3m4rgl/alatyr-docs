@@ -189,8 +189,8 @@ Linux-агент и установка в Kubernetes поддерживаютс�
 
     | Система | Машинный журнал | Пользовательский журнал |
     |---|---|---|
-    | Windows | `C:\ProgramData\AlatyrAgent\agent.log` | `%LOCALAPPDATA%\AlatyrAgent\user-agent.log` |
-    | macOS | — (агент целиком работает от пользователя) | `~/Library/Logs/AlatyrAgent/agent.log`, рядом `sshagent.log` |
+    | Windows | `C:\ProgramData\AlatyrAgent\agent.log` | `%LOCALAPPDATA%\AlatyrAgent\session.log` |
+    | macOS | — (агент целиком работает от пользователя) | `~/Library/Logs/AlatyrAgent/agent.log`, рядом `session.log` |
 
     Журнал установки MSI — если ставили с `/l*v C:\Windows\Temp\alatyr-msi.log`;
     на macOS — `/var/log/alatyr-agent-install.log` (сценарий установки) и

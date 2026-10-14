@@ -554,7 +554,7 @@ Root CA`. Вход под верным паролем администратор
 Пакет ставит исполняемый файл `/usr/local/bin/alatyr-agent`, конфигурацию
 `/etc/alatyr-agent/config.env`, системные службы `alatyr-agent.service` и
 `alatyr-agent-secretd.service`, пользовательскую службу
-`alatyr-agent-user.service` и значок в системной панели.
+`alatyr-agent-session.service` (агент сессии) и значок в системной панели.
 
 Поддерживаются `amd64` и `arm64`.
 
@@ -817,14 +817,14 @@ launchctl list | grep com.semargl.alatyr.agent
 
 ```
 -       0   com.semargl.alatyr.agent            # PID «-» — норма
-<PID>   0   com.semargl.alatyr.agent.sshagent   # постоянный процесс
+<PID>   0   com.semargl.alatyr.agent.session    # агент сессии
 ```
 
 Основной процесс агента запускается раз в 60 секунд, делает свою работу за
 несколько секунд и выходит, поэтому PID у первой строки почти всегда «-», а
 `pgrep` его обычно не находит — это не сбой. Работу агента проверяйте
-`launchctl list`, а не поиском процесса. Постоянно работают процесс
-ssh-agent (вторая строка), значок в строке меню и расширение смарт-карты.
+`launchctl list`, а не поиском процесса. Постоянно работают агент
+сессии с аппаратным ssh-agent (вторая строка), значок в строке меню и расширение смарт-карты.
 Системной службы в `/Library/LaunchDaemons` у агента на Mac нет. Журнал
 агента — `~/Library/Logs/AlatyrAgent/agent.log`.
 
@@ -1049,7 +1049,7 @@ Installer — ремонт, и `config.env` она не трогает.
 
 ```powershell
 sc.exe query AlatyrAgent
-schtasks /Query /TN AlatyrAgentUser
+schtasks /Query /TN AlatyrAgentSession
 ```
 
 #### Шаг 3. Проверьте карту и готовность ко входу
