@@ -106,6 +106,7 @@ nav:
           - Обзор: ad-logon/index.md
           - Откуда берутся UPN и SID: ad-logon/identity.md
           - Настройка: ad-logon/setup.md
+          - "Руководство: от Windows Server до RDP": ad-logon/walkthrough.md
           - Вход по RDP: ad-logon/rdp.md
           - Пределы и нюансы: ad-logon/caveats.md
       - Доступ к Kubernetes:

@@ -81,6 +81,11 @@ services:
       ALATYR_DIRECTORY_INSECURE_SKIP_VERIFY: ${ALATYR_DIRECTORY_INSECURE_SKIP_VERIFY:-false}
       ALATYR_DIRECTORY_SID_DAILY_LIMIT: ${ALATYR_DIRECTORY_SID_DAILY_LIMIT:-3}
       ALATYR_DIRECTORY_TIMEOUT_SECONDS: ${ALATYR_DIRECTORY_TIMEOUT_SECONDS:-5}
+      # ── Издатель SCEP (цель ad_logon) ──────────────────────────────────────
+      # Постоянный ключ шифрования настроек издателя (openssl rand -hex 32) и
+      # частные сети, куда издателю разрешено ходить (адрес NDES).
+      ALATYR_SCEP_ENC_KEY: ${ALATYR_SCEP_ENC_KEY:-}
+      ALATYR_SCEP_INTERNAL_CIDRS: ${ALATYR_SCEP_INTERNAL_CIDRS:-}
     ports:
       # Внешний порт параметризован: 8090 и 3000 — самые занятые
       # порты на машине, где уже что-то крутится, и зашитое значение

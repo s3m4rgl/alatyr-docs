@@ -290,9 +290,10 @@ docker compose logs alatyr-server | grep -i vault
     сертификат для неё пригоден ко входу только с SID сотрудника, который
     сервер берёт у каталога AD. Если цель вам нужна, заполните в `.env`
     переменные `ALATYR_DIRECTORY_*` и проверьте строку `каталог настроен` в
-    журнале сервера: `docker compose logs alatyr-server | grep -i каталог`.
+    журнале сервера: `docker compose logs | grep -i каталог`.
     Весь порядок — [Вход в домен по смарт-карте → Настройка](ad-logon/setup.md),
-    принцип — [Откуда берутся UPN и SID](ad-logon/identity.md).
+    принцип — [Откуда берутся UPN и SID](ad-logon/identity.md), весь путь с
+    нуля — [От Windows Server до входа по RDP](ad-logon/walkthrough.md).
 
 #### Шаг 5. Смените пароль первого администратора
 
