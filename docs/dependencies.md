@@ -40,7 +40,7 @@ COMPOSE_PROFILES=                                 # база и Vault ваши
 | Зависимость | Своя (по умолчанию) | Ваша: что вписать в `.env` | Что подготовить заранее |
 |---|---|---|---|
 | PostgreSQL | профиль `bundled-postgres` | `ALATYR_DB_HOST`, `ALATYR_DB_PORT`, `ALATYR_DB_NAME`, `ALATYR_DB_USER`, `ALATYR_DB_PASSWORD`, `ALATYR_DB_SSLMODE`, `ALATYR_DB_SSLROOTCERT` | PostgreSQL 13 или новее (проверено на 15); база и её владелец — [ниже](#ваш-postgresql); доступ по сети с машины набора; резервные копии — ваши |
-| Vault и PKI | профиль `bundled-vault` | `ALATYR_OWN_VAULT_ADDR`, `ALATYR_VAULT_CA_FILE` и учётка: одноразовый `ALATYR_VAULT_ADMIN_TOKEN` **или** `ALATYR_VAULT_ROLE_ID` + `ALATYR_VAULT_SECRET_ID` | Vault 1.11 или новее (проверено на 1.17), распечатанный; `OWN-VAULT.md` в архиве набора; адрес списков отзыва открывается из сети агентов — [ниже](#ваш-vault) |
+| Vault и PKI | профиль `bundled-vault` | `ALATYR_OWN_VAULT_ADDR`, `ALATYR_VAULT_CA_FILE` и учётка: одноразовый `ALATYR_VAULT_ADMIN_TOKEN` **или** `ALATYR_VAULT_ROLE_ID` + `ALATYR_VAULT_SECRET_ID` | Vault 1.11 или новее (проверено на 1.17), распечатанный; `OWN-VAULT.md` в архиве набора; адрес списков отзыва открывается из сети агентов — [ниже](#адрес-pki-в-сертификатах) |
 | Сертификат админки | `ALATYR_TLS=on`: выпускает служба `tls-cert` издателем `pki_web` — в своём Vault или в вашем | `ALATYR_TLS=files` (ваш сертификат в `./tls`) или `ALATYR_TLS=off` (TLS на вашем обратном прокси) | файлы `./tls/cert.pem` и `./tls/key.pem`; либо прокси и его адрес в `ALATYR_EXTRA_ORIGINS` — [Установка → Свой сертификат для админки](installation.md#свой-сертификат-для-админки) |
 | Вход через IdP (Keycloak, OIDC) | по умолчанию вход только по паролю; встроенный Keycloak — накладка для ознакомления | накладка `docker-compose.keycloak.yml` и `ALATYR_KEYCLOAK_*` | реалм и клиент в вашем Keycloak — `KEYCLOAK.md` в архиве набора |
 | Каталог AD, NDES | в наборе их нет | `ALATYR_DIRECTORY_*`, `ALATYR_SCEP_*`, корень ЦС домена в `./trust` | [Вход в домен по смарт-карте](ad-logon/setup.md) |
@@ -207,6 +207,59 @@ docker compose logs server | grep 'vault auth'
 ```
 
 Издатели целей в админке — [Установка → Шаг 4](installation.md#шаг-4-направьте-цели-в-их-издатели).
+
+## Адрес PKI в сертификатах
+
+Каждый выданный сертификат несёт внутри адреса **AIA** (`CA Issuers`, где
+взять сертификат издателя) и **CRL** (точка распространения списка отзыва).
+Клиент — macOS, Windows, приёмник — ходит по ним при проверке цепочки,
+поэтому адрес обязан разрешаться и открываться **из сети клиентов**, а не
+только с сервера.
+
+**Никогда — внутреннее имя службы.** Имя контейнера или службы кластера
+(`vault`, `<релиз>-vault`, `vault.<ns>.svc`), `localhost` или `127.0.0.1`
+снаружи не разрешаются, и тогда:
+
+- macOS ждёт таймаута разрешения имени — около **5 секунд на каждое новое
+  mTLS-соединение** с клиентским сертификатом; снаружи это выглядит как
+  «долго не спрашивает Touch ID или PIN»;
+- Windows отказывает в проверке отзыва
+  (`CERT_TRUST_REVOCATION_STATUS_UNKNOWN`).
+
+**Где задаётся:**
+
+| Установка | Откуда берётся адрес |
+|---|---|
+| Набор развёртывания, свой Vault (`bundled-vault`) | `ALATYR_PKI_PUBLIC_ADDR` в `.env` — адрес машины с портом `ALATYR_PKI_PORT` (`8200`), по нему списки отзыва и сертификаты УЦ отдаёт служба `pki-public`. `first-up.sh` вписывает его сам или спрашивает, если у машины несколько адресов |
+| Набор развёртывания, ваш Vault, способ 1 (токен администратора) | `vault-init` пишет в `<mount>/config/urls` `ALATYR_PKI_PUBLIC_ADDR`, а если он пуст — `ALATYR_OWN_VAULT_ADDR`. Адреса корня `pki`, заведённого не набором, не трогаются |
+| Ваш Vault, способ 2 и Helm-чарт | администратор Vault, `<mount>/config/urls` каждой точки PKI (переменная `PKI_ADDR` в разделе 1 `OWN-VAULT.md`). В Helm-чарте адрес Vault для клиентов — значение `pki.publicAddr` |
+
+**Пустой адрес — адреса не пишутся вовсе.** Если `ALATYR_PKI_PUBLIC_ADDR`
+пуст или задан внутренним именем, набор не подставляет имя службы, а
+очищает `config/urls` и предупреждает в журнале `vault-init`. Сертификат без
+AIA/CRL проверяется сразу, но отзыв по CRL клиентам тогда недоступен. Если
+достижимого адреса для вашего Vault нет, сделайте так же:
+
+```bash
+vault write <mount>/config/urls issuing_certificates="" crl_distribution_points=""
+```
+
+**Смена адреса не чинит уже выданное.** Адрес зашит внутрь сертификата, поэтому
+после смены `ALATYR_PKI_PUBLIC_ADDR` (и `docker compose up -d`, чтобы
+`vault-init` переписал `config/urls`) или `config/urls` в вашем Vault уже
+выданные сертификаты нужно **перевыпустить**: отозвать и одобрить новую
+заявку в админке или дождаться продления агентом.
+
+Проверить, куда смотрит сертификат:
+
+```bash
+openssl x509 -in <сертификат>.pem -noout -text | grep -A1 'Authority Information\|CRL Distribution'
+#   CA Issuers - URI:http://alatyr.corp.example:8200/v1/pki_user_mtls/ca
+#   URI:http://alatyr.corp.example:8200/v1/pki_user_mtls/crl
+```
+
+Внутреннее имя (`vault:8200`, `localhost`) в выводе — причина задержки на
+macOS и отказа проверки отзыва на Windows.
 
 ## Вход через Keycloak
 
