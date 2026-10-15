@@ -27,6 +27,37 @@ ca_file = /etc/freeradius/3.0/certs/alatyr_ca.pem
 запрещает пользователю принять недоверенный сертификат вручную — поэтому
 серверный сертификат самого RADIUS тоже должен вести к этому якорю.
 
+### Серверный сертификат RADIUS во встроенном Vault
+
+Если УЦ — встроенный Vault набора развёртывания, серверный сертификат
+RADIUS удобнее всего выпустить там же, от УЦ цели `wifi`: тогда якорь у
+устройств и у RADIUS заведомо общий. Готовой серверной роли набор не
+заводит, а учётная запись сервера Alatyr выпускать серверные сертификаты не
+может. Нужен корневой токен Vault из `init.txt`. Из каталога набора:
+
+```bash
+# корневой токен — строка «Initial Root Token»
+docker compose exec vault cat /vault/data/init.txt
+
+# один раз: своя роль для серверных сертификатов
+docker compose exec vault sh -c 'VAULT_TOKEN=<корневой токен> vault write pki_wifi/roles/radius-server \
+    allowed_domains=radius.example.com allow_bare_domains=true allow_subdomains=false \
+    server_flag=true client_flag=false key_type=ec key_bits=256 max_ttl=8760h'
+
+# выпуск
+docker compose exec vault sh -c 'VAULT_TOKEN=<корневой токен> vault write -format=json \
+    pki_wifi/issue/radius-server common_name=radius.example.com ttl=8760h' > radius.json
+jq -r .data.certificate radius.json > server.pem
+jq -r .data.private_key radius.json > server.key
+jq -r '.data.ca_chain[]' radius.json > ca_chain.pem
+rm -f radius.json
+```
+
+Имя `radius.example.com` — то, что вы задали как [имя RADIUS-сервера](server-name.md).
+Роль заводите под **своим** именем: роли, которые заводит набор, он
+переписывает при каждом подъёме. Корневой токен после работы нигде не
+сохраняйте.
+
 ## 2. Размер EAP-фрагмента и MTU
 
 Серверный flight (ServerHello, цепочка, CertificateRequest, ServerHelloDone)

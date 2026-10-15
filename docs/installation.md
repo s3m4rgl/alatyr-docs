@@ -38,6 +38,23 @@ Alatyr состоит из двух частей, и ставятся они н�
 | ОС | Linux с systemd | | проверяется на Debian 12 и Ubuntu 22.04 |
 | Docker | 24.0+, Docker Compose 2.20+ | | нужен `docker compose` как подкоманда, а не отдельный `docker-compose`; набору развёртывания — Compose 2.20 или новее (`docker compose version`) |
 
+**Откуда взять Docker.** Подойдёт любой источник, лишь бы версия была не
+ниже 24.0, а `docker compose` работал подкомандой версии 2.20 или новее:
+
+- **репозиторий Docker** (`download.docker.com`, пакеты `docker-ce` и
+  `docker-compose-plugin`) — по инструкции Docker для вашего дистрибутива;
+- **пакеты дистрибутива**, если их версия достаточно свежая. Например, в
+  Debian 13 это `docker.io` и `docker-compose`: второй кладёт именно
+  подкоманду (`/usr/libexec/docker/cli-plugins/docker-compose`), а не
+  отдельную программу.
+
+Проверка перед установкой:
+
+```bash
+docker version --format '{{.Server.Version}}'   # 24.0 или новее
+docker compose version                          # подкоманда отвечает, 2.20 или новее
+```
+
 Для развёртывания в Kubernetes вместо Docker потребуется кластер 1.27+ и
 `kubectl` с правами на создание пространства имён.
 
@@ -503,7 +520,7 @@ TLS перед админкой всегда ставит заказчик са�
 они обращаются к серверу напрямую, на `ALATYR_API_PORT` (`8090`), в обход
 админки и её TLS. Решите пустить и их через свой прокси — укажите его
 https-адрес как адрес сервера при установке агента (параметр
-`WIFI_CERT_SERVER`, [Установка → Агент](#агент)) и настройте на прокси
+`ALATYR_SERVER`, [Установка → Агент](#агент)) и настройте на прокси
 проксирование на тот же `ALATYR_API_PORT`.
 
 **Проверить.** Откройте админку по адресу прокси — браузер не предупреждает о
@@ -598,6 +615,45 @@ sudo ALATYR_SERVER="https://alatyr.your-domain.example" \
 присваивание), параметры установки **не применяются** и пакет говорит об этом
 в выводе: обновление парка не должно молча переписывать то, что человек
 правил руками.
+
+**Владелец машины: `ALATYR_DEVICE_USER`.** У агента на Linux есть
+пользовательская половина — агент сессии (`alatyr-agent-session.service`):
+он выпускает цели сотрудника — `user_mtls`, `ssh`, `vpn`, `k8s`. Пакет
+включает его одному пользователю: добавляет его в группу `alatyr-tpm`,
+включает ему `loginctl enable-linger` и запускает пользовательскую службу.
+Кого выбрать, пакет решает так:
+
+1. если задан параметр `ALATYR_DEVICE_USER`, берётся он;
+2. иначе берётся пользователь, сидящий за **консолью** машины: активный
+   локальный сеанс, не удалённый, UID от 1000.
+
+Когда пакет ставят по SSH на машину, за которой сейчас никто не сидит,
+второе правило не находит никого. Тот, кто запустил `sudo`, владельцем не
+считается. Пакет ставится, но пользовательская половина не включается
+никому, и в выводе установки будет строка «Не удалось определить
+пользователя устройства». Поэтому при удалённой установке задавайте
+владельца явно:
+
+```bash
+sudo ALATYR_DEVICE_USER=anna \
+     ALATYR_SERVER="https://alatyr.your-domain.example" \
+     ALATYR_CORP_DOMAIN="your-domain.example" \
+     apt install ./alatyr-agent_<версия>_amd64.deb
+```
+
+Пользователь `anna` должен уже существовать на машине. Членство в группе
+`alatyr-tpm` вступает в силу с его следующего входа. До этого пользовательская
+половина повторяет попытки сама, ничего делать не нужно.
+
+Если пакет уже поставлен без владельца, включите его вручную; эти же
+команды печатает установщик:
+
+```bash
+sudo usermod -aG alatyr-tpm anna
+sudo loginctl enable-linger anna
+# от имени anna, после её следующего входа:
+systemctl --user enable --now alatyr-agent-session.service
+```
 
 Для дистрибутивов без `apt` и `dnf` есть архив `tar.gz` со своим
 установщиком — он сам доставит зависимости TPM и PKCS#11:
@@ -1003,16 +1059,39 @@ Developer ID вместо поставляемого пакета.
 Smart App Control), пакет отвергнут. Неподписанный MSI, кроме того, не
 раскатывается через групповую политику.
 
-На одной машине:
+Сертификаты для доверия лежат **внутри самого пакета** —
+`alatyr-driver-ca.cer` (корень, в `Root`) и `alatyr-driver-signer.cer`
+(подписант, в `TrustedPublisher`). На диск они попадают при установке, в
+`C:\Program Files\AlatyrAgent\driver\`. Чтобы установить доверие **до**
+первой установки, извлеките их из пакета административной распаковкой — она
+только копирует файлы и ничего не устанавливает:
 
 ```powershell
-certutil -addstore -f Root "C:\Program Files\AlatyrAgent\driver\alatyr-driver-ca.cer"
-certutil -addstore -f TrustedPublisher "C:\Program Files\AlatyrAgent\driver\alatyr-driver-signer.cer"
+msiexec /a alatyr-agent-<версия>-x64.msi /qn TARGETDIR=C:\Temp\alatyr-msi
+Get-ChildItem -Recurse C:\Temp\alatyr-msi -Filter 'alatyr-driver-*.cer' |
+    Format-Table FullName
 ```
 
-В домене то же делается один раз на парк: **Computer Configuration → Policies
-→ Windows Settings → Security Settings → Public Key Policies → Trusted Root
-Certification Authorities**.
+Сверьте отпечатки и установите:
+
+```powershell
+$ca     = (Get-ChildItem -Recurse C:\Temp\alatyr-msi -Filter alatyr-driver-ca.cer).FullName
+$signer = (Get-ChildItem -Recurse C:\Temp\alatyr-msi -Filter alatyr-driver-signer.cer).FullName
+certutil -dump $ca     | Select-String 'Cert Hash\(sha1\)'   # 4d44b69f71684a8abb0835c97cc8ced743b1a69b
+certutil -dump $signer | Select-String 'Cert Hash\(sha1\)'   # f1572c4f3fd8d3de6b417ff97926c98b5023ea4d
+certutil -addstore -f Root             $ca
+certutil -addstore -f TrustedPublisher $signer
+```
+
+В домене то же делается один раз на парк: извлеките сертификаты так же и
+раздайте политикой — **Computer Configuration → Policies → Windows Settings →
+Security Settings → Public Key Policies → Trusted Root Certification
+Authorities** (корень) и **Trusted Publishers** (подписант).
+
+На машине, где пакет уже стоит, извлекать ничего не нужно: возьмите файлы из
+`C:\Program Files\AlatyrAgent\driver\`. Доверие к подписанту драйвера
+считывателя агент ставит и сам перед установкой драйвера, поэтому этот шаг
+нужен прежде всего для самого пакета MSI.
 
 **Результат.** `certutil -store Root` содержит корень `Semargl`, а установка
 пакета не показывает диалог «неизвестный издатель».
@@ -1066,6 +1145,22 @@ sc.exe query AlatyrAgent
 schtasks /Query /TN AlatyrAgentSession
 ```
 
+Основной цикл агента — это **служба Windows** `AlatyrAgent` (отображаемое
+имя «Alatyr Agent», запуск автоматический, от `LocalSystem`). Задача
+планировщика `AlatyrAgentSession` — не замена службе, а агент сессии,
+пользовательская половина агента: она запускается при входе каждого
+пользователя. Её заводит
+сама служба при каждом своём запуске.
+
+Где что лежит у машинной половины:
+
+| Что | Где |
+|---|---|
+| журнал | `C:\ProgramData\AlatyrAgent\agent.log` |
+| состояние | `C:\ProgramData\AlatyrAgent\state.json` |
+| срез состояния для окна и пользовательской половины | `C:\ProgramData\AlatyrAgent\machine-view.json` — без секретов: зарегистрировано ли устройство, состояние машинного сертификата, цели и их состояния, скрытые цели |
+| файл настроек (если нужен) | `C:\ProgramData\AlatyrAgent\config.env` |
+
 #### Шаг 3. Проверьте карту и готовность ко входу
 
 ```powershell
@@ -1097,12 +1192,14 @@ msiexec /i alatyr-agent-<версия>-x64.msi /qn ALATYR_SERVER=https://alatyr.
 
 ```
 HKLM\SOFTWARE\Policies\Semargl\Alatyr
-  WIFI_CERT_SERVER = https://alatyr.corp
-  CORP_EMAIL       = user@corp
-  CORP_DOMAIN      = corp
+  ALATYR_SERVER       = https://alatyr.corp
+  ALATYR_CORP_EMAIL   = user@corp
+  ALATYR_CORP_DOMAIN  = corp
 ```
 
-Имена значений те же, что у переменных окружения и ключей `config.env`. Ветка
+Имена значений те же, что у переменных окружения и ключей `config.env`.
+Прежние имена (`WIFI_CERT_SERVER`, `CORP_EMAIL`, `CORP_DOMAIN`) агент тоже
+читает, но если в одном источнике заданы оба имени, действует новое. Ветка
 `Policies` выбрана намеренно: её содержимое перезаписывается при каждом
 применении политики, поэтому значение, убранное из политики, исчезает с
 машины само.
