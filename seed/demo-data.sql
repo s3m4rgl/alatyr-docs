@@ -574,7 +574,7 @@ INSERT INTO service_accounts (name, description, token_hash, created_by, enabled
 --    seed avoids triggering by never inserting a 'pending' row (see
 --    webhook_delivery_repo.go: ClaimDue only picks up status='pending').
 INSERT INTO webhook_endpoints (name, url, secret_ciphertext, events, enabled, description, created_by, created_at, last_status, last_attempt_at) VALUES
-    ('SEED-SIEM-Ingest', 'https://siem.example.internal/hooks/wifi-certs',
+    ('SEED-SIEM-Ingest', 'https://siem.example.internal/hooks/alatyr',
      decode('000000000000000000000000' || repeat('00', 28), 'hex'),
      ARRAY['request.approved','request.rejected','cert.revoked'], true,
      'Forwards approval/revocation events to the SIEM', 'admin@wifi.local',

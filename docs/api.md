@@ -67,7 +67,7 @@ Registry и Keyholder API отдельно — в [Реестре ключей](
 | `POST /api/v1/enroll/token-recover` | Восстановление `enrollment_token` устройства по доказательству владения закреплённым аппаратным ключом |
 | `POST /api/v1/enroll/app-attest/challenge` | Challenge для Apple App Attest |
 | `POST /api/v1/enroll/app-attest` | Приём аттестации Apple App Attest |
-| `POST /api/v1/enroll/identity-sid` | Поиск SID пользователя по UPN — для машин вне домена, см. [Настройка входа по карте](ad-logon/setup.md#шаг-5-настройте-каталог-если-машины-вне-домена) |
+| `POST /api/v1/enroll/identity-sid` | Поиск SID пользователя по UPN в каталоге для заявки `ad_logon`; существует, только когда каталог настроен, см. [Откуда берутся UPN и SID](ad-logon/identity.md#откуда-sid) |
 | `POST /api/v1/enroll/purposes` | Какие цели назначены этому устройству |
 | `POST /api/v1/enroll/purpose-request` | Запрос цели с самого устройства (сотрудник просит, администратор решает) |
 | `POST /api/v1/enroll/crl` | Списки отзыва для клиента вне домена, см. [Вход по RDP](ad-logon/rdp.md#клиент-вне-домена-списки-отзыва-контроллера) |

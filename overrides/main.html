@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+
+{#- Превью ссылки в мессенджерах и поиске: заголовок и описание страницы. -#}
+{% block extrahead %}
+  {%- set desc = page.meta.description if page and page.meta and page.meta.description else config.site_description -%}
+  {#- У страниц раздела заголовок в меню — «Обзор», «Настройка»: без раздела он ничего не говорит. -#}
+  {%- if page and page.title and not page.is_homepage -%}
+    {%- set title = (page.parent.title ~ ": " if page.parent else "") ~ page.title ~ " — Alatyr" -%}
+  {%- else -%}
+    {%- set title = config.site_name -%}
+  {%- endif -%}
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="{{ config.site_name }}">
+  <meta property="og:title" content="{{ title }}">
+  <meta property="og:description" content="{{ desc }}">
+  {%- if page and page.canonical_url %}
+  <meta property="og:url" content="{{ page.canonical_url }}">
+  {%- endif %}
+  <meta property="og:locale" content="ru_RU">
+  <meta name="twitter:card" content="summary">
+{% endblock %}

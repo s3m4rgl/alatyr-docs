@@ -1,11 +1,12 @@
 site_name: Alatyr — Документация
-site_description: Управление сертификатами и SSH-ключами устройств для 802.1X EAP-TLS и SSH-доступа
-site_url: https://s3m4rgl.github.io/alatyr-docs/
+site_description: Аппаратные сертификаты и ключи устройств — Wi-Fi и 802.1X, mTLS, SSH, VPN, Kubernetes, вход в домен по смарт-карте; ключ в TPM или Secure Enclave
+site_url: https://docs.alatyr.vnd-tech.ru/
 repo_url: https://github.com/s3m4rgl/alatyr-docs
 docs_dir: docs
 
 theme:
   name: material
+  custom_dir: overrides
   language: ru
   palette:
     - scheme: default
@@ -65,6 +66,7 @@ extra_javascript:
 
 nav:
   - Обзор: index.md
+  - Быстрый старт: quickstart.md
   - "Пилот: с чего начать": pilot.md
   - Сценарии применения: use-cases.md
   - Знакомство с продуктом:
@@ -72,9 +74,11 @@ nav:
       - Расчёт ресурсов: sizing.md
       - Отказоустойчивость (HA): ha.md
       - Известные ограничения: limitations.md
+      - История изменений: changelog.md
       - Лицензирование: licensing.md
   - Развёртывание и настройка:
       - Установка: installation.md
+      - Своё или внешнее: dependencies.md
       - Встроенный УЦ: selfhosted-ca.md
       - Конфигурация: configuration.md
   - Администрирование:
@@ -101,7 +105,9 @@ nav:
           - Реестр ключей и Keyholder API: ssh/registry.md
       - Вход в домен по смарт-карте:
           - Обзор: ad-logon/index.md
+          - Откуда берутся UPN и SID: ad-logon/identity.md
           - Настройка: ad-logon/setup.md
+          - "Руководство: от Windows Server до RDP": ad-logon/walkthrough.md
           - Вход по RDP: ad-logon/rdp.md
           - Пределы и нюансы: ad-logon/caveats.md
       - Доступ к Kubernetes:

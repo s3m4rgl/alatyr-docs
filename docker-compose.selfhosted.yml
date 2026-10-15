@@ -165,6 +165,21 @@ services:
       ALATYR_LOCAL_JWT_SECRET: ${ALATYR_LOCAL_JWT_SECRET:?задайте ALATYR_LOCAL_JWT_SECRET (openssl rand -hex 32)}
       ALATYR_LOCAL_ADMIN_EMAIL: ${ALATYR_LOCAL_ADMIN_EMAIL:-}
       ALATYR_LOCAL_ADMIN_PASSWORD: ${ALATYR_LOCAL_ADMIN_PASSWORD:-}
+      # ── Каталог Active Directory: SID для входа в домен по карте ───────────
+      # Пусто ALATYR_DIRECTORY_URL — каталог выключен, сертификат ad_logon
+      # выписывается без SID. См. docs/ad-logon/identity.md.
+      ALATYR_DIRECTORY_URL: ${ALATYR_DIRECTORY_URL:-}
+      ALATYR_DIRECTORY_BIND_DN: ${ALATYR_DIRECTORY_BIND_DN:-}
+      ALATYR_DIRECTORY_BIND_PASSWORD: ${ALATYR_DIRECTORY_BIND_PASSWORD:-}
+      ALATYR_DIRECTORY_BASE_DN: ${ALATYR_DIRECTORY_BASE_DN:-}
+      ALATYR_DIRECTORY_INSECURE_SKIP_VERIFY: ${ALATYR_DIRECTORY_INSECURE_SKIP_VERIFY:-false}
+      ALATYR_DIRECTORY_SID_DAILY_LIMIT: ${ALATYR_DIRECTORY_SID_DAILY_LIMIT:-3}
+      ALATYR_DIRECTORY_TIMEOUT_SECONDS: ${ALATYR_DIRECTORY_TIMEOUT_SECONDS:-5}
+      # ── Издатель SCEP (цель ad_logon) ──────────────────────────────────────
+      # Постоянный ключ шифрования настроек издателя (openssl rand -hex 32) и
+      # частные сети, куда издателю разрешено ходить (адрес NDES).
+      ALATYR_SCEP_ENC_KEY: ${ALATYR_SCEP_ENC_KEY:-}
+      ALATYR_SCEP_INTERNAL_CIDRS: ${ALATYR_SCEP_INTERNAL_CIDRS:-}
     volumes:
       - vault_creds:/run/alatyr:ro
     ports:

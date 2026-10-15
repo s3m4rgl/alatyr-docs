@@ -71,6 +71,21 @@ services:
       ALATYR_LOCAL_ADMIN_PASSWORD: ${ALATYR_LOCAL_ADMIN_PASSWORD:-${WIFI_CERT_LOCAL_ADMIN_PASSWORD:-${LOCAL_ADMIN_PASSWORD:-}}}
       ALATYR_LOCAL_ACCESS_TTL_MIN: ${ALATYR_LOCAL_ACCESS_TTL_MIN:-${WIFI_CERT_LOCAL_ACCESS_TTL_MIN:-${LOCAL_ACCESS_TTL_MIN:-15}}}
       ALATYR_LOCAL_REFRESH_TTL_DAYS: ${ALATYR_LOCAL_REFRESH_TTL_DAYS:-${WIFI_CERT_LOCAL_REFRESH_TTL_DAYS:-${LOCAL_REFRESH_TTL_DAYS:-30}}}
+      # ── Каталог Active Directory: SID для входа в домен по карте ───────────
+      # Пусто ALATYR_DIRECTORY_URL — каталог выключен, сертификат ad_logon
+      # выписывается без SID. См. docs/ad-logon/identity.md.
+      ALATYR_DIRECTORY_URL: ${ALATYR_DIRECTORY_URL:-}
+      ALATYR_DIRECTORY_BIND_DN: ${ALATYR_DIRECTORY_BIND_DN:-}
+      ALATYR_DIRECTORY_BIND_PASSWORD: ${ALATYR_DIRECTORY_BIND_PASSWORD:-}
+      ALATYR_DIRECTORY_BASE_DN: ${ALATYR_DIRECTORY_BASE_DN:-}
+      ALATYR_DIRECTORY_INSECURE_SKIP_VERIFY: ${ALATYR_DIRECTORY_INSECURE_SKIP_VERIFY:-false}
+      ALATYR_DIRECTORY_SID_DAILY_LIMIT: ${ALATYR_DIRECTORY_SID_DAILY_LIMIT:-3}
+      ALATYR_DIRECTORY_TIMEOUT_SECONDS: ${ALATYR_DIRECTORY_TIMEOUT_SECONDS:-5}
+      # ── Издатель SCEP (цель ad_logon) ──────────────────────────────────────
+      # Постоянный ключ шифрования настроек издателя (openssl rand -hex 32) и
+      # частные сети, куда издателю разрешено ходить (адрес NDES).
+      ALATYR_SCEP_ENC_KEY: ${ALATYR_SCEP_ENC_KEY:-}
+      ALATYR_SCEP_INTERNAL_CIDRS: ${ALATYR_SCEP_INTERNAL_CIDRS:-}
     ports:
       # Внешний порт параметризован: 8090 и 3000 — самые занятые
       # порты на машине, где уже что-то крутится, и зашитое значение

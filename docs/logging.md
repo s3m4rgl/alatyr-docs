@@ -100,9 +100,9 @@ stdout и, если агенту передан `--log-file`, дублирует
 
 | ОС | Машинная половина | Пользовательская половина |
 |---|---|---|
-| Linux | `/var/log/alatyr-agent.log`, он же `journalctl -u alatyr-agent.service -f` | `~/.local/state/alatyr-agent/user-agent.log` (служба `systemctl --user status alatyr-agent-user`) |
-| Windows | `C:\ProgramData\AlatyrAgent\agent.log` | `%LOCALAPPDATA%\AlatyrAgent\user-agent.log` |
-| macOS | — (машинной половины нет: агент целиком per-user) | `~/Library/Logs/AlatyrAgent/agent.log`, рядом `sshagent.log` для процесса `ssh-agent` |
+| Linux | `/var/log/alatyr-agent.log`, он же `journalctl -u alatyr-agent.service -f` | `~/.local/state/alatyr-agent/session.log` (агент сессии, `systemctl --user status alatyr-agent-session`) |
+| Windows | `C:\ProgramData\AlatyrAgent\agent.log` | `%LOCALAPPDATA%\AlatyrAgent\session.log` |
+| macOS | — (машинной половины нет: агент целиком per-user) | `~/Library/Logs/AlatyrAgent/agent.log`, рядом `session.log` агента сессии |
 
 Обе службы Linux — **резидентные**, а не разовый запуск по таймеру:
 через машинную половину пользовательская получает `enrollment_token`, и
