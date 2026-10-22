@@ -547,6 +547,31 @@ Root CA`. Вход под верным паролем администратор
 | адрес сервера | да | Адрес **API** сервера Alatyr вместе с портом — см. ниже |
 | почта владельца | да, либо вместо неё домен | На кого выпускается сертификат |
 | корпоративный домен | да, если почта не задана | Почта тогда выводится как `<имя машины>@<домен>` |
+| отпечаток корня (`ALATYR_CA_FINGERPRINT`) | да, с 1.6.1 | SHA-256 корня, по которому агент проверяет сервер при первом контакте. При входе в домен по карте — два отпечатка через запятую, см. ниже |
+
+<a id="ca-fingerprint"></a>
+**Отпечаток корня: `ALATYR_CA_FINGERPRINT`.** С 1.6.1 новая установка
+агента закрепляет корневой сертификат каждой цели, только если он совпал с
+отпечатком, заданным при установке. Без отпечатка агент встаёт, но первый
+корень не принимает и сертификатов не ставит. Отпечаток корня Alatyr
+печатает `first-up.sh` при подъёме сервера вместе с готовыми строками
+установки агента.
+
+Сертификат входа в домен по карте (`ad_logon`) выпускает Enterprise CA
+домена, и корень этой цели — корень Enterprise CA, а не корень Alatyr. Его
+агент тоже принимает только по отпечатку из установки, со слов сервера —
+никогда. Если машинам нужен вход по карте, задайте оба отпечатка через
+запятую, без пробелов:
+
+```
+ALATYR_CA_FINGERPRINT=<корень Alatyr>,<корень Enterprise CA>
+```
+
+Как получить отпечаток корня Enterprise CA — [«Настройка входа по карте»,
+шаг 2](ad-logon/setup.md#enterprise-ca-root-fingerprint). Агенты, обновлённые
+с 1.6.0, работают по прежним правилам и без отпечатка; но если им задан
+отпечаток (или файл CA `ALATYR_CA_CERT`), первый корень каждой цели
+сверяется с ним — задавайте сразу оба отпечатка.
 
 **Какой адрес сервера давать агенту.** Агент ходит в API сервера, поэтому
 ему дают адрес API, а не тот, что в адресной строке админки
@@ -599,22 +624,30 @@ Root CA`. Вход под верным паролем администратор
 ```bash
 # Debian, Ubuntu
 sudo ALATYR_SERVER="https://alatyr.your-domain.example" \
+     ALATYR_CA_FINGERPRINT="<корень Alatyr>" \
      ALATYR_CORP_DOMAIN="your-domain.example" \
      apt install ./alatyr-agent_<версия>_amd64.deb
 
 # Fedora, RHEL, Alma, Rocky
 sudo ALATYR_SERVER="https://alatyr.your-domain.example" \
+     ALATYR_CA_FINGERPRINT="<корень Alatyr>" \
      ALATYR_CORP_DOMAIN="your-domain.example" \
      dnf install ./alatyr-agent-<версия>-1.x86_64.rpm
 ```
 
+При входе в домен по карте — `ALATYR_CA_FINGERPRINT="<корень Alatyr>,<корень
+Enterprise CA>"` ([отпечаток корня](#ca-fingerprint)).
+
 Прежние имена `WIFI_CERT_SERVER`, `CORP_DOMAIN`, `CORP_EMAIL` агент ещё
 понимает, но пишет в журнал предупреждение об устаревшем имени.
 
-Если `config.env` уже настроен (есть хоть одно незакомментированное
-присваивание), параметры установки **не применяются** и пакет говорит об этом
-в выводе: обновление парка не должно молча переписывать то, что человек
-правил руками.
+Если `config.env` уже настроен, пакет переписывает в нём **только
+переданные** параметры, а остальные строки оставляет как есть, и называет в
+выводе каждый заменённый ключ. Так же меняется отпечаток у уже
+установленного агента: та же команда с новым `ALATYR_CA_FINGERPRINT` и
+пакетом новой версии, а на той же версии — `apt install --reinstall` или
+`dnf reinstall`. Пакет при этом перезапускает агента, в том числе агента
+сессии у вошедших пользователей.
 
 **Владелец машины: `ALATYR_DEVICE_USER`.** У агента на Linux есть
 пользовательская половина — агент сессии (`alatyr-agent-session.service`):
@@ -664,6 +697,7 @@ cd alatyr-agent
 sha256sum -c SHA256SUMS.txt
 sudo ./install.sh \
     --server "https://alatyr.your-domain.example" \
+    --ca-fingerprint "<корень Alatyr>" \
     --corp-domain "your-domain.example"
 ```
 
@@ -689,6 +723,15 @@ sudo systemctl restart alatyr-agent.service
 Так же меняется и адрес сервера после установки: строка `ALATYR_SERVER`
 (в файлах прежних установок она может называться `WIFI_CERT_SERVER` —
 правьте ту, что есть).
+
+Отпечаток — строка `ALATYR_CA_FINGERPRINT="<корень Alatyr>,<корень Enterprise
+CA>"`. Сертификат входа по карте ставит агент сессии, а он читает настройки
+при запуске: после правки перезапустите и его, от имени каждого вошедшего
+пользователя:
+
+```bash
+systemctl --user restart alatyr-agent-session.service
+```
 
 !!! danger "Не ставьте этому файлу права `0600`"
     Пакет кладёт `config.env` с правами `0640`, владелец `root`, группа
@@ -824,14 +867,15 @@ nc -z -G5 alatyr.your-domain.example 8200 && echo "OK   8200/tcp" || echo "ПР�
 ```bash
 PKG="$HOME/Downloads/alatyr-agent-1.6.0.pkg"   # полный путь к скачанному пакету
 SERVER=https://alatyr.your-domain.example     # адрес API сервера, см. ниже
+CA_FP='<корень Alatyr>'                       # при входе по карте: '<корень Alatyr>,<корень Enterprise CA>'
 CORP_DOMAIN=your-domain.example
 CORP_EMAIL=user@your-domain.example           # можно оставить пустым — тогда <логин>@CORP_DOMAIN
 
 CFG="/Library/Application Support/AlatyrAgent"
 test -s "$PKG" || echo "ПРОВАЛ: пакета $PKG нет — поправьте PKG"
 sudo mkdir -p "$CFG"
-printf 'ALATYR_SERVER="%s"\nALATYR_CORP_DOMAIN="%s"\nALATYR_CORP_EMAIL="%s"\n' \
-    "$SERVER" "$CORP_DOMAIN" "$CORP_EMAIL" |
+printf 'ALATYR_SERVER="%s"\nALATYR_CA_FINGERPRINT="%s"\nALATYR_CORP_DOMAIN="%s"\nALATYR_CORP_EMAIL="%s"\n' \
+    "$SERVER" "$CA_FP" "$CORP_DOMAIN" "$CORP_EMAIL" |
   sudo tee "$CFG/config.env.preseed" >/dev/null
 sudo chmod 600 "$CFG/config.env.preseed"
 sudo test -s "$CFG/config.env.preseed" && test -s "$PKG" \
@@ -848,7 +892,8 @@ sudo test -s "$CFG/config.env.preseed" && test -s "$PKG" \
 **Что происходит с файлом предварительных значений.** Сценарий установки
 читает его (только если владелец файла — `root`, иначе файл игнорируется),
 переносит значения в `/Library/Application Support/AlatyrAgent/config.env`
-под ключами `ALATYR_SERVER`, `ALATYR_CORP_DOMAIN`, `ALATYR_CORP_EMAIL` и
+под ключами `ALATYR_SERVER`, `ALATYR_CA_FINGERPRINT`, `ALATYR_CORP_DOMAIN`,
+`ALATYR_CORP_EMAIL` и
 **удаляет** `config.env.preseed`. Поэтому после установки этого файла нет —
 так и должно быть: дальше настройки агента живут только в `config.env`.
 Чтобы переустановить пакет с другими значениями, файл кладётся заново
@@ -858,7 +903,8 @@ sudo test -s "$CFG/config.env.preseed" && test -s "$PKG" \
 Прежние имена ключей `WIFI_CERT_SERVER`, `CORP_DOMAIN`, `CORP_EMAIL` в
 файле тоже понимаются; если в файле есть оба имени, сильнее `ALATYR_*`.
 Через MDM (например, FleetDM: Software → Add Software) делается то же самое:
-сценарий до установки кладёт этот файл, затем ставится пакет.
+сценарий до установки кладёт этот файл, затем ставится пакет. Профиль
+конфигурации MDM агент не читает — только этот файл.
 
 !!! danger "Почту нельзя передать переменной окружения установщика"
     `installer` в macOS не пробрасывает переменные окружения в
@@ -1019,6 +1065,11 @@ launchctl kickstart -k gui/$(id -u)/com.semargl.alatyr.agent
 текущего `config.env`; ключи, которых в нём нет, берутся из текущего файла,
 а **пустое** значение ничего не стирает — оно означает «не задано».
 
+Тем же путём — правкой `config.env` или повторной установкой с файлом
+предварительных значений — меняется и отпечаток корня
+(`ALATYR_CA_FINGERPRINT`); новое значение агент подхватывает со следующего
+запуска.
+
 #### Для разработчиков: сборка пакета своей подписью
 
 Нужна, только если организация хочет подписать агента **своим**
@@ -1101,6 +1152,7 @@ Authorities** (корень) и **Trusted Publishers** (подписант).
 ```powershell
 msiexec /i alatyr-agent-<версия>-x64.msi /qn `
     ALATYR_SERVER=https://alatyr.your-domain.example `
+    ALATYR_CA_FINGERPRINT=<корень Alatyr> `
     ALATYR_CORP_DOMAIN=your-domain.example `
     ALATYR_CORP_EMAIL=user@your-domain.example
 ```
@@ -1114,6 +1166,7 @@ msiexec /i alatyr-agent-<версия>-x64.msi /qn `
 | Ключ | Умолчание | Что делает |
 |---|---|---|
 | `ALATYR_SERVER` | — | Адрес API сервера Alatyr |
+| `ALATYR_CA_FINGERPRINT` | — | [Отпечаток корня](#ca-fingerprint); при входе по карте — `<корень Alatyr>,<корень Enterprise CA>` |
 | `ALATYR_CORP_DOMAIN` | — | Корпоративный домен |
 | `ALATYR_CORP_EMAIL` | — | Почта владельца устройства |
 | `ALATYR_INSTALL_CARD` | `1` | Заводить ли смарт-карту и считыватель |
@@ -1137,6 +1190,21 @@ msiexec /i alatyr-agent-<версия>-x64.msi /qn `
 и заменяет адрес и в `config.env`, если он там записан. Без ключа обновление
 сохраняет прежний адрес. Повторная установка **того же** пакета для Windows
 Installer — ремонт, и `config.env` она не трогает.
+
+**Сменить или дописать отпечаток** — так же: обновление с ключом
+`ALATYR_CA_FINGERPRINT`, а на той же версии — ремонт с ключом:
+
+```powershell
+msiexec /i alatyr-agent-<версия>-x64.msi /qn REINSTALL=ALL REINSTALLMODE=omus `
+    ALATYR_CA_FINGERPRINT=<корень Alatyr>,<корень Enterprise CA>
+```
+
+Явный ключ сильнее запомненного, остальные запомненные параметры остаются.
+Сертификат входа по карте ставит агент сессии, а он читает отпечаток при
+запуске. Обновление и ремонт перезапускают службу, а она — агента сессии,
+так что новое значение действует сразу; значение из политики — со
+следующего входа пользователя или перезапуска службы. Строка `ALATYR_CA_FINGERPRINT` в `config.env` для входа
+по карте не действует: этот файл агенту сессии закрыт.
 
 **Результат.** Служба работает и задача пользовательской половины заведена:
 
@@ -1180,8 +1248,12 @@ certutil -silent -scinfo
 
 ```powershell
 msiexec /i alatyr-agent-<версия>-x64.msi /qn ALATYR_SERVER=https://alatyr.corp `
+    ALATYR_CA_FINGERPRINT=<корень Alatyr>,<корень Enterprise CA> `
     ALATYR_CORP_EMAIL=$FLEET_VAR_HOST_END_USER_EMAIL_IDP
 ```
+
+В Intune те же свойства — в командной строке установки приложения. Второй
+отпечаток нужен только машинам со входом по карте.
 
 Здесь `https://alatyr.corp` — адрес обратного прокси перед API; без прокси
 укажите `http://<адрес>:8090`.
@@ -1192,10 +1264,16 @@ msiexec /i alatyr-agent-<версия>-x64.msi /qn ALATYR_SERVER=https://alatyr.
 
 ```
 HKLM\SOFTWARE\Policies\Semargl\Alatyr
-  ALATYR_SERVER       = https://alatyr.corp
-  ALATYR_CORP_EMAIL   = user@corp
-  ALATYR_CORP_DOMAIN  = corp
+  ALATYR_SERVER         = https://alatyr.corp
+  ALATYR_CORP_EMAIL     = user@corp
+  ALATYR_CORP_DOMAIN    = corp
+  ALATYR_CA_FINGERPRINT = <корень Alatyr>,<корень Enterprise CA>
 ```
+
+Отпечаток из политики действует, только если при установке ключ
+`ALATYR_CA_FINGERPRINT` не передавали: свойства установки старше политики
+(порядок — ниже), а снять однажды переданное свойство нечем. Таким машинам
+отпечаток меняют командой установки, как выше.
 
 Имена значений те же, что у переменных окружения и ключей `config.env`.
 Прежние имена (`WIFI_CERT_SERVER`, `CORP_EMAIL`, `CORP_DOMAIN`) агент тоже
