@@ -1052,49 +1052,50 @@ Developer ID вместо поставляемого пакета.
 
 #### Шаг 1. Установите доверие к издателю пакета
 
-Пакет подписан нашим сертификатом, а не сертификатом общедоступного УЦ, и
-корня `Semargl` в списке доверенных у Windows по умолчанию нет. Пока корень
-не установлен, Windows считает издателя неизвестным: установка проходит, но с
-предупреждением, а политики, требующие подписанного кода (AppLocker, WDAC,
-Smart App Control), пакет отвергнут. Неподписанный MSI, кроме того, не
-раскатывается через групповую политику.
+Пакет подписан нашим собственным сертификатом издателя
+`CN=Semargl Alatyr Agent, O=Semargl, C=RU`, а не сертификатом общедоступного
+УЦ. Среди доверенных у Windows по умолчанию его нет. Пока доверие не
+установлено, Windows считает издателя неизвестным: ручная установка проходит,
+но с предупреждением «неизвестный издатель», `Get-AuthenticodeSignature` по
+`.msi` отвечает `UnknownError`, а политики, требующие подписанного кода
+(AppLocker, WDAC, Smart App Control), пакет отвергнут.
 
-Сертификаты для доверия лежат **внутри самого пакета** —
-`alatyr-driver-ca.cer` (корень, в `Root`) и `alatyr-driver-signer.cer`
-(подписант, в `TrustedPublisher`). На диск они попадают при установке, в
-`C:\Program Files\AlatyrAgent\driver\`. Чтобы установить доверие **до**
-первой установки, извлеките их из пакета административной распаковкой — она
-только копирует файлы и ничего не устанавливает:
+Сертификат издателя берётся **из подписи самого `.msi`** — до установки,
+других файлов не нужно. Извлеките его и сверьте отпечаток SHA-256:
 
 ```powershell
-msiexec /a alatyr-agent-<версия>-x64.msi /qn TARGETDIR=C:\Temp\alatyr-msi
-Get-ChildItem -Recurse C:\Temp\alatyr-msi -Filter 'alatyr-driver-*.cer' |
-    Format-Table FullName
+$sig = Get-AuthenticodeSignature .\alatyr-agent-<версия>-x64.msi
+$sig.SignerCertificate.Subject      # CN=Semargl Alatyr Agent, O=Semargl, C=RU
+Export-Certificate -Cert $sig.SignerCertificate -FilePath .\alatyr-publisher.cer
+certutil -hashfile .\alatyr-publisher.cer SHA256
+# должно совпасть:
+# 9fd525d84800b3f5219023c47037183a183f0bd1cbca38801bb794db312c91ba
 ```
 
-Сверьте отпечатки и установите:
+Отпечаток не совпал — пакет подписан не нами: не ставьте ни сертификат, ни
+пакет. Совпал — установите сертификат в оба хранилища машины:
 
 ```powershell
-$ca     = (Get-ChildItem -Recurse C:\Temp\alatyr-msi -Filter alatyr-driver-ca.cer).FullName
-$signer = (Get-ChildItem -Recurse C:\Temp\alatyr-msi -Filter alatyr-driver-signer.cer).FullName
-certutil -dump $ca     | Select-String 'Cert Hash\(sha1\)'   # 4d44b69f71684a8abb0835c97cc8ced743b1a69b
-certutil -dump $signer | Select-String 'Cert Hash\(sha1\)'   # f1572c4f3fd8d3de6b417ff97926c98b5023ea4d
-certutil -addstore -f Root             $ca
-certutil -addstore -f TrustedPublisher $signer
+certutil -addstore -f Root             .\alatyr-publisher.cer
+certutil -addstore -f TrustedPublisher .\alatyr-publisher.cer
 ```
 
-В домене то же делается один раз на парк: извлеките сертификаты так же и
+В домене то же делается один раз на парк: извлеките сертификат так же и
 раздайте политикой — **Computer Configuration → Policies → Windows Settings →
-Security Settings → Public Key Policies → Trusted Root Certification
-Authorities** (корень) и **Trusted Publishers** (подписант).
+Security Settings → Public Key Policies**, разделы **Trusted Root
+Certification Authorities** и **Trusted Publishers**.
 
-На машине, где пакет уже стоит, извлекать ничего не нужно: возьмите файлы из
-`C:\Program Files\AlatyrAgent\driver\`. Доверие к подписанту драйвера
-считывателя агент ставит и сам перед установкой драйвера, поэтому этот шаг
-нужен прежде всего для самого пакета MSI.
+!!! note "Корень драйвера считывателя — другой сертификат"
+    В пакете лежат ещё `alatyr-driver-ca.cer` и `alatyr-driver-signer.cer`
+    (после установки — в `C:\Program Files\AlatyrAgent\driver\`). Это
+    цепочка подписи драйвера считывателя смарт-карты, и доверие к ней пакет
+    ставит сам перед установкой драйвера. Подпись самого `.msi` она не
+    подтверждает: с одним только корнем драйвера в `Root` издатель пакета
+    остаётся неизвестным.
 
-**Результат.** `certutil -store Root` содержит корень `Semargl`, а установка
-пакета не показывает диалог «неизвестный издатель».
+**Результат.** `Get-AuthenticodeSignature .\alatyr-agent-<версия>-x64.msi`
+отвечает `Valid`, а установка пакета не показывает диалог «неизвестный
+издатель».
 
 #### Шаг 2. Поставьте пакет
 

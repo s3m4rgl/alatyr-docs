@@ -507,8 +507,9 @@ Session Host → Session Time Limits*). Remote Credential Guard не обяза�
 ### 9.1. Установите агента
 
 На Windows-устройстве сотрудника, от имени администратора, — пакет из выпуска
-([«Установка → Windows»](../installation.md#windows), там же доверие к
-издателю пакета):
+([«Установка → Windows»](../installation.md#windows)). Сначала установите
+доверие к издателю пакета — сертификату из подписи самого `.msi`
+([«Установка → Windows», шаг 1](../installation.md#шаг-1-установите-доверие-к-издателю-пакета)):
 
 ```powershell
 msiexec /i alatyr-agent-<версия>-x64.msi /qn `
