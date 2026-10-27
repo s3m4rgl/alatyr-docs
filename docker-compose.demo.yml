@@ -26,21 +26,27 @@
 # Образы из реестра этим не страдают: версию в них проставляют при публикации
 # (`--build-arg VERSION_FULL/COMMIT/BUILT_AT`).
 #
-#   Then open  http://localhost:13000  and log in with:
+#   Then open  https://localhost:13000  and log in with:
 #       email:    admin@wifi.local
 #       password: Admin1234!
 #
 # Brings up, IN ORDER (each step waits for the previous to be HEALTHY):
 #   postgres → vault → vault-init (PKI) → server (migrates + seeds first admin)
-#            → seed (fake data) → ui
+#            → seed (fake data) → web-tls-cert → web
 #
 # Everything is enabled out of the box: local email+password auth, outgoing
 # webhooks, and fake demo data. No Keycloak, no Vault token juggling.
 #
 # Only two host ports are published (everything else talks over the internal
 # compose network, so nothing else on your machine can clash with it):
-#   UI   → http://localhost:13000
-#   API  → http://localhost:18090
+#   WEB  → https://localhost:13000   (один https-вход: админка и API агентов,
+#          служба web; http://localhost:13000 → 301 на https. Сертификат
+#          самовыпущен корнем демо-стека на имена из ALATYR_DEMO_NAMES,
+#          свой каталог — ALATYR_DEMO_TLS_DIR (в нём cert.pem и key.pem;
+#          создавайте его сами до первого подъёма: без него каталог
+#          ./demo-tls создаёт docker, и принадлежать он будет root)
+#   API  → http://localhost:18090    (прямой http API — для отладки
+#          с самой машины; агентам давайте https://<имя>:13000)
 #
 # ⚠️  DEV/DEMO ONLY. The secrets below are hard-coded on purpose so the stack is
 #     reproducible with zero setup. NEVER use these values in production.
@@ -267,6 +273,17 @@ services:
           use_csr_sans=true \
           key_usage="DigitalSignature,KeyEncipherment" >/dev/null
 
+        # web — серверный сертификат TLS-фронта демо: один https-вход, на
+        # котором админка и API агентов. server_flag обязателен; имена задаёт
+        # ALATYR_DEMO_NAMES (выпуск — разовая служба web-tls-cert).
+        vault write pki/roles/web \
+          allow_any_name=true \
+          max_ttl=8760h \
+          enforce_hostnames=false \
+          server_flag=true \
+          client_flag=false \
+          key_usage="DigitalSignature,KeyEncipherment" >/dev/null
+
         # Движок Vault SSH — подписывает ПУБЛИЧНЫЙ КЛЮЧ для цели `ssh`
         # (режим A, сертификат). Отдельный движок, а не роль в pki; без него
         # сервер отвечает "issuer_not_configured" (см. vault-dev-setup.sh).
@@ -330,13 +347,13 @@ services:
       #
       # Поэтому адрес задаётся снаружи: `ALATYR_DEMO_ORIGINS` дописывается к
       # localhost-адресам, которые нужны при работе через туннель. Пример:
-      #   ALATYR_DEMO_ORIGINS=http://stand.example.local:13000 docker compose -f docker-compose.demo.yml up -d
+      #   ALATYR_DEMO_ORIGINS=https://stand.example.local:13000 docker compose -f docker-compose.demo.yml up -d
       #
       # `curl` заголовка `Origin` не шлёт, поэтому проверка демо-состава curl'ом
       # эту поломку НЕ воспроизводит — проверять браузером либо
       # `curl -H "Origin: <адрес морды>"`.
       # ОБА НАПИСАНИЯ ОДНОГО ХОСТА, И ЭТО НЕ ИЗБЫТОЧНОСТЬ. Для браузера
-      # `http://localhost:13000` и `http://127.0.0.1:13000` — РАЗНЫЕ origin,
+      # `https://localhost:13000` и `https://127.0.0.1:13000` — РАЗНЫЕ origin,
       # сравнение дословное. Демо-состав, открытый по адресу вместо имени, отвечал
       # `403` на предварительный запрос: чтение работало, запись — нет, кнопка
       # «Сохранить» крутилась вечно без единого сообщения. README предлагает
@@ -344,7 +361,11 @@ services:
       # набрать адрес — продукт молча отказывал наполовину.
       # Проверка: Origin localhost → 204,
       # Origin 127.0.0.1 → 403.
-      ALATYR_CORS_ORIGINS: "http://localhost:13000,http://127.0.0.1:13000,http://localhost:3000,http://127.0.0.1:3000${ALATYR_DEMO_ORIGINS:+,${ALATYR_DEMO_ORIGINS}}"
+      ALATYR_CORS_ORIGINS: "https://localhost:13000,https://127.0.0.1:13000,http://localhost:3000,http://127.0.0.1:3000${ALATYR_DEMO_ORIGINS:+,${ALATYR_DEMO_ORIGINS}}"
+
+      # Агенты с 1.6.1 приходят через TLS-фронт web: верить X-Forwarded-For
+      # только от него (адрес закреплён в сети состава).
+      ALATYR_TRUSTED_PROXIES: "198.18.232.10/32"
 
       # ── Local email+password auth (the demo login path) ──
       #
@@ -408,7 +429,9 @@ services:
       # ALATYR_SCEP_CA_FINGERPRINT: "<sha256-hex-of-CA-cert>"
       # ALATYR_SCEP_ENC_KEY: "<openssl rand -hex 32>"
     ports:
-      - "18090:8090"
+      # Прямой http API — для отладки, ЖЁСТКО только с самой машины
+      # агенты ходят через TLS-фронт web на 13000.
+      - "127.0.0.1:18090:8090"
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8090/api/v1/version >/dev/null 2>&1 || exit 1"]
       interval: 5s
@@ -482,11 +505,199 @@ services:
       VITE_KEYCLOAK_URL: "http://localhost:8080"
       VITE_KEYCLOAK_REALM: "alatyr"
       VITE_KEYCLOAK_CLIENT_ID: "alatyr-portal"
+  # ── Web TLS certificate (one-shot) ─────────────────────────────────────────
+  # Выпускает серверный сертификат TLS-фронта корнем демо-стека
+  # (pki/roles/web) на имена из ALATYR_DEMO_NAMES. В каталоге
+  # ALATYR_DEMO_TLS_DIR лежат cert.pem и key.pem — выпуска нет, ваши
+  # файлы копируются для web при ЭТОМ подъёме (замену на лету
+  # демонстрация не отслеживает: следующая команда up подхватит).
+  web-tls-cert:
+    image: hashicorp/vault:1.17
+    container_name: alatyr-demo-web-tls-cert
+    depends_on:
+      vault:
+        condition: service_healthy
+      # Не раньше конца vault-init: роль web создаётся именно им — с health
+      # vault alone выпуск ловил «no handler for route pki/issue/web» гонкой.
+      vault-init:
+        condition: service_completed_successfully
+    environment:
+      VAULT_ADDR: "http://vault:8200"
+      VAULT_TOKEN: "dev-root-token"
+      ALATYR_DEMO_NAMES: "${ALATYR_DEMO_NAMES:-localhost,127.0.0.1}"
+      ALATYR_DEMO_TLS_DIR: "${ALATYR_DEMO_TLS_DIR:-./demo-tls}"
+    restart: "no"
+    volumes:
+      - demo_web_tls:/tls
+      - "${ALATYR_DEMO_TLS_DIR:-./demo-tls}:/own:ro"
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        set -e
+        # Ключ не живёт ни секунды с широкой маской.
+        umask 077
+        if [ -f /own/cert.pem ] && [ -s /own/cert.pem ] && [ -f /own/key.pem ] && [ -s /own/key.pem ]; then
+          echo "[web-tls] сертификат свой (каталог ALATYR_DEMO_TLS_DIR) — выпуска нет"
+          cp /own/cert.pem /tls/cert.pem
+          cp /own/key.pem /tls/key.pem
+          chmod 600 /tls/key.pem
+          # Метку имён выпущенного стираем: когда свои файлы уберут,
+          # следующий подъём обязан перевыпустить.
+          rm -f /tls/names.txt
+          exit 0
+        fi
+        if [ -f /tls/cert.pem ] && [ -s /tls/cert.pem ] && [ -f /tls/key.pem ] && [ -s /tls/key.pem ]; then
+          if [ -f /tls/names.txt ] && [ "$$(cat /tls/names.txt)" = "$$ALATYR_DEMO_NAMES" ]; then
+            echo "[web-tls] сертификат уже выпущен на эти имена — не трогаю"
+            exit 0
+          fi
+          echo "[web-tls] имена сменились ($$(cat /tls/names.txt 2>/dev/null || echo '?') → $$ALATYR_DEMO_NAMES) — перевыпускаю"
+        fi
+        # Разбор списка имён: DNS-имена — в alt_names, адреса — в ip_sans
+        # (агент по IP сверяет IP-SAN). Всё, кроме букв, цифр, точки, дефиса
+        # и двоеточия, — отказ: значения уходят аргументами в Vault.
+        NAMES=$$(printf '%s' "$$ALATYR_DEMO_NAMES" | tr ', ' '\n\n' | sed '/^$$/d' | sort -u)
+        [ -n "$$NAMES" ] || { echo "[web-tls] ОТКАЗ: ALATYR_DEMO_NAMES пуст — не на что выпускать" >&2; exit 1; }
+        DNS=""; IPS=""
+        for n in $$NAMES; do
+          case "$$n" in
+            *[!A-Za-z0-9.:-]*) echo "[web-tls] ОТКАЗ: «$$n» в ALATYR_DEMO_NAMES — не имя и не IP-адрес" >&2; exit 1 ;;
+            *:*) IPS="$$IPS,$$n" ;;
+            *[!0-9.]*) DNS="$$DNS,$$n" ;;
+            *) IPS="$$IPS,$$n" ;;
+          esac
+        done
+        DNS="$${DNS#,}"; IPS="$${IPS#,}"
+        CN="$${DNS%%,*}"; [ -n "$$CN" ] || CN="$${IPS%%,*}"
+        echo "[web-tls] выпускаю сертификат TLS-фронта корнем демо: DNS «$$DNS», IP «$$IPS»"
+        set -- common_name="$$CN" ttl=8760h
+        [ -n "$$DNS" ] && set -- "$$@" "alt_names=$$DNS"
+        [ -n "$$IPS" ] && set -- "$$@" "ip_sans=$$IPS"
+        resp=$$(vault write -format=json pki/issue/web "$$@")
+        # Vault печатает pretty-JSON: после двоеточия пробел. «: *» в regex —
+        # обязателен: без него sed не находит поле, файл выходит пустым и
+        # web падает по сертификату (поймано на живом подъёме).
+        # Vault печатает pretty-JSON: массив ca_chain идёт МНОГОСТРОЧНО и
+        # однострочный sed находит в нём ноль байт — цепочку берём из однострочного поля issuing_ca.
+        printf '%s' "$$resp" | sed -n 's/.*"certificate": *"\([^"]*\)".*/\1/p' | sed 's/\\n/\n/g' > /tls/cert.pem
+        printf '%s' "$$resp" | sed -n 's/.*"issuing_ca": *"\([^"]*\)".*/\1/p' | sed 's/\\n/\n/g' >> /tls/cert.pem
+        printf '%s' "$$resp" | sed -n 's/.*"private_key": *"\([^"]*\)".*/\1/p' | sed 's/\\n/\n/g' > /tls/key.pem
+        # Пустые файлы не пропускаем молча: web падал бы по сертификату
+        # без следа, кто виноват.
+        [ -s /tls/cert.pem ] && [ -s /tls/key.pem ] || {
+            echo "[web-tls] ОТКАЗ: cert.pem/key.pem пустые — разбор ответа Vault сломан" >&2
+            exit 1
+        }
+        # Лист без издателя — отказ, а не успех: агент с ALATYR_CA_FINGERPRINT
+        # ищет корень в предъявленной цепочке.
+        [ "$$(grep -c 'BEGIN CERTIFICATE' /tls/cert.pem)" -ge 2 ] || {
+            echo "[web-tls] ОТКАЗ: в cert.pem меньше двух сертификатов — разбор issuing_ca сломан" >&2
+            exit 1
+        }
+        # Отпечаток корня — SHA-256 от DER и в формате ALATYR_CA_FINGERPRINT
+        # (двоеточия, прописные); hash PEM-текста агент не примет.
+        ROOT_FP=$$(printf '%s' "$$resp" | sed -n 's/.*"issuing_ca": *"\([^"]*\)".*/\1/p' | sed 's/\\n/\n/g' | sed '/^-----/d' | tr -d '\r\n' | base64 -d | sha256sum | cut -c1-64 | tr 'a-f' 'A-F' | sed 's/../&:/g; s/:$$//')
+        case "$$ROOT_FP" in
+        ""|E3:B0:C4:*)
+            echo "[web-tls] ОТКАЗ: отпечаток корня пуст ($$ROOT_FP) — ответ Vault не разобран" >&2
+            exit 1
+            ;;
+        esac
+        chmod 600 /tls/key.pem
+        printf '%s\n' "$$ALATYR_DEMO_NAMES" > /tls/names.txt
+        echo "[web-tls] готово; отпечаток корня (ALATYR_CA_FINGERPRINT): $$ROOT_FP"
+
+  # ── Web (TLS-фронт: один https-вход) ───────────────────────────────────────
+  # Единственная точка входа демо: админка и API агентов на
+  # https://<имя>:13000, http на тот же порт → 301 на https. Пути /api,
+  # /enroll, /health, /cache — на сервер, остальное — в админку (ui).
+  web:
+    image: nginx:1.28.3-alpine@sha256:a8b39bd9cf0f83869a2162827a0caf6137ddf759d50a171451b335cecc87d236
+    container_name: alatyr-demo-web
+    restart: unless-stopped
+    depends_on:
+      server:
+        condition: service_healthy
+      ui:
+        condition: service_healthy
+      web-tls-cert:
+        condition: service_completed_successfully
     ports:
-      - "13000:8080"
+      # Один порт хоста: вторая публикация (80 на тот же порт) дала бы
+      # «port is already allocated». Простой http на ssl-порт nginx отвечает
+      # сам — error_page 497 (см. конфиг ниже).
+      - "13000:443"
+    volumes:
+      - demo_web_tls:/etc/nginx/tls:ro
+    # Закреплённый адрес: сервер верит X-Forwarded-For только от него.
+    networks:
+      default:
+        ipv4_address: 198.18.232.10
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-check-certificate -qO- https://127.0.0.1/health >/dev/null 2>&1 || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        set -eu
+        # Порт ХОСТА для 301: внутри контейнера порт 443, а перенаправлять
+        # надо на опубликованный (13000). $$host его не содержит —
+        # подставляем из окружения через заполнитель.
+        HTTP_PORT="${ALATYR_DEMO_UI_PORT:-13000}"
+        # Одинарные кавычки у делимитера обязательны: $$host, $$srv и
+        # $$request_uri должны дожить до nginx, а не развернуться оболочкой.
+        # Общий прокси-контекст — на уровне server: nginx не разрешает
+        # директивы через переменные, развёрнутый в location $$PROXY валил
+        # бы конфиг по синтаксису.
+        cat > /etc/nginx/conf.d/default.conf <<'NGINX_CONF'
+        server {
+            listen 443 ssl;
+            http2 on;
+            ssl_certificate     /etc/nginx/tls/cert.pem;
+            ssl_certificate_key /etc/nginx/tls/key.pem;
+            # Адреса server/ui: имена служб разрешаются на каждый запрос, а
+            # не при старте — пересозданный контейнер получает новый адрес.
+            resolver 127.0.0.11 valid=10s ipv6=off;
+            set $$srv http://server:8090;
+            set $$ui http://ui:8080;
+            proxy_http_version 1.1;
+            proxy_set_header Host $$http_host;
+            proxy_set_header X-Real-IP $$remote_addr;
+            proxy_set_header X-Forwarded-For $$proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto https;
+            # Простой http на ssl-порт: 497 — внутренний код nginx, отвечаем
+            # 301 на тот же порт хоста.
+            error_page 497 =301 https://$$host:__HTTP_PORT__$$request_uri;
+            location /api/      { proxy_pass $$srv; }
+            location /enroll/   { proxy_pass $$srv; }
+            location = /health  { proxy_pass $$srv/health; }
+            location /cache/    { proxy_pass $$srv; }
+            location /          { proxy_pass $$ui; }
+        }
+        NGINX_CONF
+        sed -i "s/__HTTP_PORT__/$${HTTP_PORT}/" /etc/nginx/conf.d/default.conf
+        exec nginx -g 'daemon off;'
+
+# Подсеть закреплена ради адреса web (ALATYR_TRUSTED_PROXIES у server);
+# диапазон 198.18.0.0/15 — benchmark, с бытовыми сетями не пересекается.
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: 198.18.232.0/24
+          # Динамические адреса — из верхней половины: закреплённый .10
+          # не занимает никто до старта web.
+          ip_range: 198.18.232.128/25
 
 volumes:
   demo_postgres_data:
   # Данные Vault: корень PKI и всё выданное. Именно этого тома не было,
   # когда PKI жила в памяти.
   demo_vault_data:
+  # Серверный сертификат TLS-фронта: выпуск корнем демо или свои файлы.
+  demo_web_tls:
