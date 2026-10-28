@@ -260,6 +260,7 @@ echo '0 * * * * root /etc/ssh/alatyr-krl-update.sh' | sudo tee /etc/cron.d/alaty
 Проверьте, что клиент видит именно ключ Alatyr:
 
 ```bash
+# Linux:
 ssh-add -l
 # в списке должен быть ключ с пометкой (alatyr-agent)
 
@@ -267,10 +268,36 @@ ssh-add -l
 SSH_AUTH_SOCK="$HOME/Library/Application Support/AlatyrAgent/ssh-agent.sock" ssh-add -l
 ```
 
-**Если ключа в списке нет** — клиент смотрит на чужой ssh-agent. Так бывает,
-когда переменную `SSH_AUTH_SOCK` уже занял системный ключ-агент рабочего стола
-(GNOME Keyring и подобные) или оболочка не читает `/etc/profile.d` (например
-`fish`). Направьте клиент на сокет Alatyr явно.
+**Windows** — в сеансе сотрудника, PowerShell:
+
+```powershell
+# Windows: ssh-add не читает IdentityAgent — передайте ему канал Alatyr явно.
+$line = Select-String -Path "$env:USERPROFILE\.ssh\config" -Pattern '^\s*IdentityAgent\s+"?([^"\s]*wifi-cert-agent-ssh-[^"\s]+)' | Select-Object -First 1
+$env:SSH_AUTH_SOCK = $line.Matches[0].Groups[1].Value
+ssh-add -l
+# в списке должен быть ключ с пометкой (alatyr-agent)
+```
+
+Или без переменной — проверьте сам `ssh`:
+
+```powershell
+ssh -G server.example.com | findstr /i identityagent
+# должна быть строка identityagent //./pipe/wifi-cert-agent-ssh-...
+ssh -v server.example.com 2>&1 | findstr /c:"agent returned"
+# например: get_agent_identities: agent returned 3 keys
+```
+
+На Windows `ssh-add -l` без переменной `SSH_AUTH_SOCK` отвечает
+`Error connecting to agent` — это ожидаемо и не значит, что ключ недоступен:
+`ssh` берёт канал из `IdentityAgent`.
+
+**Если ключа в списке нет** (Linux и macOS) — клиент смотрит на чужой
+ssh-agent. Так бывает, когда переменную `SSH_AUTH_SOCK` уже занял системный
+ключ-агент рабочего стола (GNOME Keyring и подобные) или оболочка не читает
+`/etc/profile.d` (например `fish`). Направьте клиент на сокет Alatyr явно.
+На Windows: если в `~/.ssh/config` нет строки `IdentityAgent` с каналом
+Alatyr — перезапустите агента или войдите в сеанс заново; агент дописывает
+строку сам.
 
 Сокет агента:
 
