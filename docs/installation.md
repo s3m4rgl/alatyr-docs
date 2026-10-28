@@ -179,7 +179,7 @@ curl -s http://localhost:8090/api/v1/version
 набор может настроить Vault сам одноразовым токеном администратора.
 
 ```bash
-VER=1.6.0      # номер выпуска со страницы выпуска
+VER=1.6.1      # номер выпуска со страницы выпуска
 tar -xzf alatyr-deploy-$VER.tar.gz
 cd alatyr-deploy-$VER
 cp .env.example .env
@@ -212,7 +212,7 @@ TLS `verify-full`, оба способа подключить Vault и защи�
 **Состав без набора, исходные файлы выпуска.**
 
 ```bash
-VER=1.6.0      # номер выпуска со страницы выпуска
+VER=1.6.1      # номер выпуска со страницы выпуска
 curl -fL -o alatyr-docs-$VER.tar.gz \
   https://github.com/s3m4rgl/alatyr-docs/archive/refs/tags/v$VER.tar.gz
 tar -xzf alatyr-docs-$VER.tar.gz
@@ -899,7 +899,7 @@ nc -z -G5 alatyr.your-domain.example 8200 && echo "OK   8200/tcp" || echo "ПР�
 блок работал из любого каталога:
 
 ```bash
-PKG="$HOME/Downloads/alatyr-agent-1.6.0.pkg"   # полный путь к скачанному пакету
+PKG="$HOME/Downloads/alatyr-agent-1.6.1.pkg"   # полный путь к скачанному пакету
 SERVER=https://alatyr.your-domain.example     # адрес API сервера, см. ниже
 CA_FP='<корень Alatyr>'                       # при входе по карте: '<корень Alatyr>,<корень Enterprise CA>'
 CORP_DOMAIN=your-domain.example
