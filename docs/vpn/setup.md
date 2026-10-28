@@ -148,6 +148,9 @@ alatyr-agent vpn
   Агент этот PIN не хранит, поэтому необслуживаемый запуск службой в этом
   режиме невозможен.
 
+На RHEL, Alma и Rocky 9 со штатным `tpm2-pkcs11` 1.5 VPN работает в режиме
+PIN карты — см. [Особенности](caveats.md#rhel-alma-и-rocky-9-vpn-в-режиме-pin-карты).
+
 ### Windows
 
 Клиент — **community OpenVPN GUI** (`openvpn.exe` 2.6 из дистрибутива
