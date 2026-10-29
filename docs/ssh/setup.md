@@ -68,8 +68,69 @@
 Оба значения открытые: их можно копировать, хранить в системе управления
 конфигурацией и раздавать на серверы обычным способом.
 
+### Доверие к сертификату Alatyr на вашем сервере
+
+Дальше ваш сервер обращается к Alatyr по HTTPS — проверкой в шаге 4 и
+скриптами из шага 5. Сертификат HTTPS набора развёртывания выпускает
+встроенный удостоверяющий центр Alatyr, и его корень («Alatyr Root CA»)
+нужно один раз положить в системное доверие сервера. Пока его там нет,
+`curl` отказывается соединяться:
+`SSL certificate problem: unable to get local issuer certificate`.
+
+Если сертификат админки выпущен вашим удостоверяющим центром и сервер ему уже
+доверяет, этот подшаг пропустите.
+
+1. Скачайте корень. Адрес — в выводе `./first-up.sh`, строка `скачать:` в
+   блоке «Доверие браузера»; обычно это порт `8200` сервера Alatyr:
+
+    ```bash
+    curl -fsS -o /tmp/alatyr-root.pem http://<адрес Alatyr>:8200/v1/pki/ca/pem
+    ```
+
+2. Сверьте отпечаток SHA-256 со строкой `SHA-256:` из того же блока вывода
+   `./first-up.sh` (её же показывает браузер в свойствах сертификата
+   админки):
+
+    ```bash
+    openssl x509 -in /tmp/alatyr-root.pem -noout -fingerprint -sha256
+    ```
+
+    Совпадение подтверждает, что файл — корень именно вашей установки.
+    Отпечатки различаются — остановитесь и выясните причину, прежде чем
+    доверять файлу.
+
+3. Положите корень в системное доверие:
+
+    ```bash
+    # Debian и Ubuntu (расширение .crt обязательно):
+    sudo cp /tmp/alatyr-root.pem /usr/local/share/ca-certificates/alatyr-root.crt
+    sudo update-ca-certificates
+
+    # RHEL, CentOS, Alma, Rocky:
+    sudo cp /tmp/alatyr-root.pem /etc/pki/ca-trust/source/anchors/alatyr-root.pem
+    sudo update-ca-trust
+    ```
+
+Проверьте, что TLS проходит:
+
+```bash
+curl -sS -o /dev/null -w '%{http_code}\n' \
+  "https://<адрес Alatyr>:8443/api/v1/keyholder/keys?principal=check"
+```
+
+Ответ — трёхзначный код (до шага 4 это `403`), а не ошибка SSL.
+
+!!! tip "Не хотите менять системное доверие"
+    Положите корень отдельным файлом, например
+    `/etc/ssh/alatyr_root_ca.pem` (владелец `root`, права `0644`), и
+    укажите его в `ALATYR_CACERT` в файле настроек из шага 5. Скрипты шага 5
+    передают этот файл `curl` (`--cacert`), а системное доверие остаётся
+    прежним. В проверках добавляйте `--cacert /etc/ssh/alatyr_root_ca.pem`
+    к команде `curl`.
+
 **Результат.** На вашем сервере лежат два файла: `alatyr_user_ca.pub` и
-`alatyr.krl`.
+`alatyr.krl`, а корень Alatyr — в доверии сервера (или в файле для
+`ALATYR_CACERT`).
 
 ## Шаг 4. Разрешите вашему серверу спрашивать Alatyr
 
@@ -95,25 +156,35 @@
 
 **Результат.** Запросы с ваших серверов больше не отклоняются по адресу.
 
-!!! warning "Сервер Alatyr за опубликованным портом Docker: какой адрес он видит"
-    Разрешённые сети сверяются с адресом, **с которого пришло TCP-соединение**
-    на сервер Alatyr. Когда сервер поднят набором развёртывания и ваш
-    `sshd` ходит на опубликованный порт Docker (`8090`), этот адрес зависит
-    от того, как Docker на этой машине пробрасывает порт. Обычно (правила
-    iptables) сохраняется настоящий адрес вашего сервера. Но в части
-    конфигураций — например, при пробросе через `userland-proxy` — все
-    вызывающие приходят адресом шлюза сети Docker (`172.x.0.1`). Тогда
-    список с адресом вашего сервера не срабатывает, а список с адресом шлюза
-    пускает **всех**.
+!!! warning "Какой адрес вашего сервера видит Alatyr"
+    Разрешённые сети сверяются с адресом вашего сервера — таким, каким его
+    видит сервер Alatyr.
+
+    **HTTPS-адрес админки** (`https://<сервер>:8443` в наборе
+    развёртывания) — рекомендуемый путь. Запрос проходит через обратный
+    прокси набора, прокси передаёт серверу Alatyr адрес вашего сервера, и
+    список сетей сверяется с ним. Если перед набором стоит ещё и ваш
+    собственный обратный прокси или балансировщик, впишите его адреса в
+    два списка: `ALATYR_TLS_OFFLOAD_PROXIES` (от этих адресов прокси набора
+    принимает цепочку адресов) и `ALATYR_TRUSTED_PROXIES` вместе с адресами
+    служб набора ([Конфигурация](../configuration.md)) — иначе Alatyr
+    увидит адрес вашего прокси.
+
+    **Порт API `8090` напрямую** (если вы опубликовали его сами). Адрес
+    берётся из TCP-соединения и зависит от того, как Docker на этой машине
+    пробрасывает порт. Обычно (правила iptables) сохраняется настоящий адрес
+    вашего сервера; при пробросе через `userland-proxy` все вызывающие
+    приходят адресом шлюза сети Docker (`172.x.0.1`).
 
     Не угадывайте — посмотрите. Выполните проверку Keyholder (раздел
     [«Если вход не проходит»](#если-вход-не-проходит)) с вашего сервера, пока
     список сетей пуст: отказ `403` называет адрес, который увидел сервер
     Alatyr (`client_ip`). Если это адрес вашего сервера — впишите его как
-    `/32`. Если это адрес шлюза Docker — включите **серверный токен** (п. 2
-    выше): тогда пускает не адрес, а токен. Переменная
-    `ALATYR_TRUSTED_PROXIES` здесь не поможет: перед портом нет прокси, а
-    адрес подменяет трансляция адресов Docker.
+    `/32`. Если это адрес прокси или шлюза Docker — в список его не
+    вписывайте: он общий для всех, кто приходит этим путём. Для своего
+    прокси дополните оба списка выше, для шлюза Docker ходите по
+    HTTPS-адресу админки или включите **серверный токен** (п. 2 выше) —
+    тогда пускает не адрес, а токен.
 
 !!! info "Что даёт разрешённая сеть, а что нет"
     Список подсетей ограничивает, **откуда** можно спрашивать, но не **о
@@ -144,7 +215,7 @@ AuthorizedKeysCommandUser root
 set -eu
 . /etc/ssh/alatyr.env
 
-curl -fsS -m 5 \
+curl -fsS -m 5 ${ALATYR_CACERT:+--cacert "$ALATYR_CACERT"} \
   -H "Authorization: Bearer $KEYHOLDER_TOKEN" \
   "$ALATYR_URL/api/v1/keyholder/keys?principal=$1" \
   | python3 -c 'import json,sys; [print(k) for k in json.load(sys.stdin)["keys"]]'
@@ -154,8 +225,10 @@ curl -fsS -m 5 \
 
 ```bash
 # /etc/ssh/alatyr.env
-ALATYR_URL=https://alatyr.example.com
+ALATYR_URL=https://alatyr.example.com:8443
 KEYHOLDER_TOKEN=<значение из шага 4>
+# Только если корень Alatyr не в системном доверии (шаг 3):
+# ALATYR_CACERT=/etc/ssh/alatyr_root_ca.pem
 ```
 
 ```bash
@@ -169,7 +242,10 @@ sudo chmod 0600 /etc/ssh/alatyr.env
 
 `ALATYR_URL` — адрес вашего сервера Alatyr, тот же, что в адресной строке
 админки. Если токен вы не включали (шаг 4), строку с `Authorization` из
-скрипта уберите, а `KEYHOLDER_TOKEN` из файла удалите.
+скрипта уберите, а `KEYHOLDER_TOKEN` из файла удалите. `ALATYR_CACERT` нужен,
+только если корень Alatyr вы положили отдельным файлом, а не в системное
+доверие (шаг 3); не задан — `curl` проверяет сертификат по системному
+доверию.
 
 !!! warning "Разбирайте ответ целиком, а не поиском по строке"
     Ключи Alatyr начинаются с `ecdsa-sha2-nistp256`, а не с `ssh-`. Пример
@@ -213,7 +289,8 @@ set -eu
 KRL=/etc/ssh/alatyr.krl
 TMP=$(mktemp /etc/ssh/.alatyr.krl.XXXXXX)
 trap 'rm -f "$TMP"' EXIT
-curl -fsS -m 15 -H "Authorization: Bearer $KEYHOLDER_TOKEN" \
+curl -fsS -m 15 ${ALATYR_CACERT:+--cacert "$ALATYR_CACERT"} \
+     -H "Authorization: Bearer $KEYHOLDER_TOKEN" \
      "$ALATYR_URL/api/v1/keyholder/krl" -o "$TMP"
 [ -s "$TMP" ] || { echo "пустой список отзыва — не подменяю" >&2; exit 1; }
 ssh-keygen -Q -l -f "$TMP" >/dev/null || { echo "файл не разбирается" >&2; exit 1; }
@@ -260,6 +337,7 @@ echo '0 * * * * root /etc/ssh/alatyr-krl-update.sh' | sudo tee /etc/cron.d/alaty
 Проверьте, что клиент видит именно ключ Alatyr:
 
 ```bash
+# Linux:
 ssh-add -l
 # в списке должен быть ключ с пометкой (alatyr-agent)
 
@@ -267,10 +345,36 @@ ssh-add -l
 SSH_AUTH_SOCK="$HOME/Library/Application Support/AlatyrAgent/ssh-agent.sock" ssh-add -l
 ```
 
-**Если ключа в списке нет** — клиент смотрит на чужой ssh-agent. Так бывает,
-когда переменную `SSH_AUTH_SOCK` уже занял системный ключ-агент рабочего стола
-(GNOME Keyring и подобные) или оболочка не читает `/etc/profile.d` (например
-`fish`). Направьте клиент на сокет Alatyr явно.
+**Windows** — в сеансе сотрудника, PowerShell:
+
+```powershell
+# Windows: ssh-add не читает IdentityAgent — передайте ему канал Alatyr явно.
+$line = Select-String -Path "$env:USERPROFILE\.ssh\config" -Pattern '^\s*IdentityAgent\s+"?([^"\s]*wifi-cert-agent-ssh-[^"\s]+)' | Select-Object -First 1
+$env:SSH_AUTH_SOCK = $line.Matches[0].Groups[1].Value
+ssh-add -l
+# в списке должен быть ключ с пометкой (alatyr-agent)
+```
+
+Или без переменной — проверьте сам `ssh`:
+
+```powershell
+ssh -G server.example.com | findstr /i identityagent
+# должна быть строка identityagent //./pipe/wifi-cert-agent-ssh-...
+ssh -v server.example.com 2>&1 | findstr /c:"agent returned"
+# например: get_agent_identities: agent returned 3 keys
+```
+
+На Windows `ssh-add -l` без переменной `SSH_AUTH_SOCK` отвечает
+`Error connecting to agent` — это ожидаемо и не значит, что ключ недоступен:
+`ssh` берёт канал из `IdentityAgent`.
+
+**Если ключа в списке нет** (Linux и macOS) — клиент смотрит на чужой
+ssh-agent. Так бывает, когда переменную `SSH_AUTH_SOCK` уже занял системный
+ключ-агент рабочего стола (GNOME Keyring и подобные) или оболочка не читает
+`/etc/profile.d` (например `fish`). Направьте клиент на сокет Alatyr явно.
+На Windows: если в `~/.ssh/config` нет строки `IdentityAgent` с каналом
+Alatyr — перезапустите агента или войдите в сеанс заново; агент дописывает
+строку сам.
 
 Сокет агента:
 
@@ -409,9 +513,13 @@ sudo journalctl -u ssh | grep "Accepted publickey"   # RHEL и SUSE: -u sshd
 
 ```bash
 . /etc/ssh/alatyr.env
-curl -fsS -H "Authorization: Bearer $KEYHOLDER_TOKEN" \
+curl -sS ${ALATYR_CACERT:+--cacert "$ALATYR_CACERT"} \
+  -H "Authorization: Bearer $KEYHOLDER_TOKEN" \
   "$ALATYR_URL/api/v1/keyholder/keys?principal=ivan"
 ```
+
+Ключа `-f` здесь нет намеренно: так при отказе видно тело ответа, а в нём —
+причина и адрес, который увидел сервер Alatyr (`client_ip`).
 
 Успешный ответ выглядит так:
 
@@ -434,7 +542,11 @@ curl -fsS -H "Authorization: Bearer $KEYHOLDER_TOKEN" \
 ключи для `ivan`, а зарегистрированы они на `i.petrov`.
 
 **Ответ `403`.** Адрес вашего сервера не попал в разрешённые сети — либо
-токен включён, а в запросе его нет.
+токен включён, а в запросе его нет. Сверьте `client_ip` из ответа со списком
+сетей (шаг 4, «Какой адрес вашего сервера видит Alatyr»).
+
+**`curl: (60) SSL certificate problem`.** Сервер не доверяет сертификату
+Alatyr: положите корень в доверие или задайте `ALATYR_CACERT` (шаг 3).
 
 **Окно агента показывает «Сервер отказал в регистрации ключа».** Причина
 написана там же, рядом. Чаще всего дело в настройке «Требовать подтверждение

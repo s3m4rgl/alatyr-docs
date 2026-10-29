@@ -3,8 +3,13 @@
 Справочник переменных окружения **сервера** Alatyr: что задать, что можно не
 трогать и что сервер проверяет при старте.
 
-Флаги и переменные агента (`WIFI_CERT_SERVER`, `CORP_DOMAIN`, `CORP_EMAIL`) —
-на странице [Установка → Агент](installation.md#агент). Настройки, которые
+Флаги и переменные агента (`ALATYR_SERVER`, `ALATYR_CORP_DOMAIN`,
+`ALATYR_CORP_EMAIL`, отпечаток корня `ALATYR_CA_FINGERPRINT`) — на странице
+[Установка → Агент](installation.md#агент). Отпечаток агента и
+`ALATYR_SCEP_CA_FINGERPRINT` сервера — разные значения: агенту нужны
+самоподписанные корни (корень Alatyr и, при входе по карте, корень
+Enterprise CA домена — [отпечаток корня](installation.md#ca-fingerprint)),
+серверу — сертификат выпускающего SCEP CA. Настройки, которые
 живут не в окружении, а в базе и правятся в админке (издатели, политика
 выдачи, ступени подтверждения, разрешённые сети Keyholder), — в разделах по
 целям и в [«Управление и роли»](administration.md).
@@ -78,6 +83,15 @@ VAULT_SECRET_ID_FILE=/run/secrets/vault_secret_id
     адрес — и любое ограничение по адресу (например, разрешённые сети
     Keyholder) превращается в общее разрешение на весь мир.
 
+    В наборе развёртывания из выпуска список задан заранее: это адреса двух
+    служб набора, через которые проходит HTTPS-адрес админки (по умолчанию
+    `198.18.231.10/32,198.18.231.11/32`). Стоит перед набором ваш прокси
+    или балансировщик — допишите его CIDR к ним, не заменяя их, и впишите
+    тот же адрес в `ALATYR_TLS_OFFLOAD_PROXIES` набора: только от этих
+    адресов служба web передаёт серверу цепочку адресов клиента, от
+    остальных — адрес соединения. Шлюз сети Docker не вписывайте ни в один
+    из двух списков.
+
     Перечисляйте CIDR только тех прокси, которые действительно стоят перед
     сервером: доверие лишнему возвращает подмену адреса. Неразобранная запись
     и сеть, покрывающая всё (`/0`), — отказ при старте, а не предупреждение:
@@ -116,7 +130,7 @@ VAULT_SECRET_ID_FILE=/run/secrets/vault_secret_id
 | `ALATYR_ISSUER` | `WIFI_CERT_ISSUER` | `vault` | Чем выпускать: `vault` \| `scep`. |
 | `ALATYR_SCEP_URL` | `WIFI_CERT_SCEP_URL` | — | URL внешнего SCEP CA. Обязателен при `ALATYR_ISSUER=scep`. Обязан быть `https` — см. ниже. |
 | `ALATYR_SCEP_CHALLENGE` 🔒 | `WIFI_CERT_SCEP_CHALLENGE` | — | SCEP challenge password. Обязателен при `scep`. |
-| `ALATYR_SCEP_CA_FINGERPRINT` | `WIFI_CERT_SCEP_CA_FINGERPRINT` | — | Ожидаемый отпечаток SHA-256 сертификата SCEP CA. Обязателен при `scep`. |
+| `ALATYR_SCEP_CA_FINGERPRINT` | `WIFI_CERT_SCEP_CA_FINGERPRINT` | — | Ожидаемый отпечаток SHA-256 сертификата SCEP CA. Обязателен при `scep`. Это не отпечаток, который задают агентам (`ALATYR_CA_FINGERPRINT` — самоподписанный корень). |
 | `ALATYR_SCEP_CA_IDENTIFIER` | `WIFI_CERT_SCEP_CA_IDENTIFIER` | — | Идентификатор CA для установок с несколькими CA (NDES). |
 | `ALATYR_SCEP_ENC_KEY` 🔒 | `WIFI_CERT_SCEP_ENC_KEY` | — | Ключ AES-256 (64 hex-символа) для шифрования состояния опроса SCEP. Обязателен при `scep`. |
 | `ALATYR_SCEP_POLL_SECONDS` | `WIFI_CERT_SCEP_POLL_SECONDS` | `30` | Интервал опроса ожидающих заявок SCEP, секунды. |
