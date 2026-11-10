@@ -342,7 +342,7 @@ flowchart TD
     Trust["NTAuth store<br/>и доверие корню CA"]
 
     Agent <--> |"1, 8"| VSC
-    Agent <--> |"2, 7"| Server
+    Agent <--> |"2, 2а, 7"| Server
     Server <--> |"2а"| LDAP
     Admin --> |"3"| Server
     Server <--> |"4, 6"| NDES

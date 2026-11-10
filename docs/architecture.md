@@ -46,6 +46,7 @@ flowchart LR
     AdminAPI --> Outbox
     PKIReg --> Vault
     PKIReg --> SCEPCA
+    SSHHost["Целевой SSH-сервер<br/>(AuthorizedKeysCommand)"] -- "ключи пользователя,<br/>список отзыва, HTTPS" --> Keyholder
     Keyholder --> DB
     Outbox -- "HMAC-signed события<br/>(X-Alatyr-Signature)" --> ExternalHooks["Внешние webhook-получатели"]
 ```
