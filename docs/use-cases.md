@@ -202,6 +202,7 @@ flowchart TD
     subgraph DeviceBox["Устройство сотрудника"]
         HW["Secure Enclave / TPM<br/>ключ с проверкой присутствия"]
         Agent["Агент Alatyr"]
+        Store["Хранилище сертификатов ОС"]
     end
 
     subgraph AlatyrBox["Входит в Alatyr"]
@@ -217,7 +218,7 @@ flowchart TD
     Agent <--> |"2, 6"| Server
     Admin --> |"3"| Server
     Server <--> |"4, 5"| PKI
-    Agent --> |"7"| Store["Хранилище сертификатов ОС"]
+    Agent --> |"7"| Store
     Store --> |"8"| Proxy
     Proxy --> |"9"| PKI
     Proxy --> |"10"| App
