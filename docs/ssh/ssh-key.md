@@ -198,9 +198,7 @@ Host *
    не проходит»](setup.md#если-вход-не-проходит):
 
     ```bash
-    . /etc/ssh/alatyr.env
-    curl -fsS -H "Authorization: Bearer $KEYHOLDER_TOKEN" \
-      "$ALATYR_URL/api/v1/keyholder/keys?principal=ivan"
+    sudo -u alatyr-kh /usr/local/sbin/alatyr-keyholder-get.sh keys principal=ivan format=text
     ```
 
 4. **Вход.** `ssh ivan@server.example.com` — появляется окно подтверждения,
