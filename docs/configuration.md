@@ -148,7 +148,7 @@ VAULT_SECRET_ID_FILE=/run/secrets/vault_secret_id
 | `ALATYR_SCEP_CHALLENGE` 🔒 | `WIFI_CERT_SCEP_CHALLENGE` | — | SCEP challenge password. Обязателен при `scep`. |
 | `ALATYR_SCEP_CA_FINGERPRINT` | `WIFI_CERT_SCEP_CA_FINGERPRINT` | — | Ожидаемый отпечаток SHA-256 сертификата SCEP CA. Обязателен при `scep`. Это не отпечаток, который задают агентам (`ALATYR_CA_FINGERPRINT` — самоподписанный корень). |
 | `ALATYR_SCEP_CA_IDENTIFIER` | `WIFI_CERT_SCEP_CA_IDENTIFIER` | — | Идентификатор CA для установок с несколькими CA (NDES). |
-| `ALATYR_SCEP_ENC_KEY` 🔒 | `WIFI_CERT_SCEP_ENC_KEY` | — | Ключ AES-256 (64 hex-символа) для шифрования состояния опроса SCEP. Обязателен при `scep`. |
+| `ALATYR_SCEP_ENC_KEY` 🔒 | `WIFI_CERT_SCEP_ENC_KEY` | — | Ключ AES-256 (64 hex-символа), которым в базе шифруются секреты издателей SCEP (challenge, ключ опроса) и состояние опроса. Сервер без набора: обязателен при `scep`. Набор развёртывания требует его всегда — `first-up.sh` заводит его при первом запуске. После первого запуска не меняйте: сохранённые настройки издателей перестанут расшифровываться. Храните копию отдельно от резервной копии базы. |
 | `ALATYR_SCEP_POLL_SECONDS` | `WIFI_CERT_SCEP_POLL_SECONDS` | `30` | Интервал опроса ожидающих заявок SCEP, секунды. |
 | `ALATYR_SCEP_ALLOW_PLAINTEXT_URL` | — | `false` | Разрешить `http://` в `ALATYR_SCEP_URL`. |
 | `ALATYR_SCEP_INTERNAL_CIDRS` | — | — | Сети, куда издателю SCEP разрешено ходить вопреки защите от SSRF: локальный ADCS/NDES всегда имеет частный адрес. Пусто — поведение не меняется. Link-local не разрешается никогда, даже если указан. |
