@@ -313,11 +313,32 @@ otool -L /path/to/libwinpr3.*.dylib | grep krb5   # пусто = карточн�
 KRB5_CONFIG=<ваш krb5.conf> <ваш собранный клиент> \
   /v:<машина>.<домен> /d:<домен> /u:<логин> /sec:nla \
   "/smartcard-logon:reader:Alatyr Smart Card Reader" \
-  "/kerberos:pkinit-anchors:FILE:<цепочка-УЦ>.pem,pkcs11-module:/opt/homebrew/lib/opensc-pkcs11.so"
+  "/kerberos:pkinit-anchors:FILE:<цепочка-УЦ>.pem,pkcs11-module:/Applications/alatyr-agent.app/Contents/Frameworks/alatyr-opensc-pkcs11.so"
 ```
 
 Чем доставлять такой клиент сотрудникам — открытый вопрос, готового ответа у
 продукта нет. Подробнее об ограничениях macOS — в [пределах](caveats.md).
+
+### Модуль PKCS#11 на macOS
+
+Модуль PKCS#11 (OpenSC) ставится вместе с агентом внутрь приложения, он
+подписан и нотаризован и обновляется вместе с агентом. Ставить OpenSC
+отдельно не нужно. Клиентам, которым для входа смарт-картой нужен путь к
+модулю PKCS#11 (Remote Desktop Manager, FreeRDP и другие), указывайте этот
+путь:
+
+```text
+/Applications/alatyr-agent.app/Contents/Frameworks/alatyr-opensc-pkcs11.so
+```
+
+!!! warning "Не указывайте `~/.pkcs11_modules/alatyr-opensc-pkcs11.dylib`"
+    Это ссылка для OpenVPN Connect: агент ставит её, только пока
+    пользователю назначена цель `vpn`, и убирает, когда цель снимают. Клиент
+    RDP, настроенный на эту ссылку, перестанет входить по карте, как только
+    у пользователя не станет цели `vpn`. Подробнее о ссылке — в [настройке
+    VPN для macOS](../vpn/setup.md#где-модуль-pkcs11-и-как-его-находит-connect).
+
+Состояние модуля показывает `alatyr-agent status`, строка `VPN-модуль`.
 
 ## Клиент вне домена: списки отзыва контроллера
 
